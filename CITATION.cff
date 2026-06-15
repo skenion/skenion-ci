@@ -1,0 +1,11 @@
+cff-version: 1.2.0
+message: "If this Skenion repository helps your artwork, research, publication, installation, or tool, please cite it."
+title: "Skenion CI"
+type: software
+authors:
+  - name: "EchoVisionLab"
+date-released: 2026-06-15
+url: "https://github.com/echovisionlab/skenion-ci"
+repository-code: "https://github.com/echovisionlab/skenion-ci"
+license: "Apache-2.0"
+abstract: "Reusable GitHub Actions workflows and composite actions for Skenion repositories."
