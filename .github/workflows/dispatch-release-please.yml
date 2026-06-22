@@ -1,0 +1,93 @@
+name: Dispatch Release Please
+
+on:
+  workflow_call:
+    inputs:
+      target-repo:
+        description: Repository to dispatch, in owner/repo form.
+        required: true
+        type: string
+      train-version:
+        description: Explicit lockstep release-as version, for example 0.43.0.
+        required: true
+        type: string
+      mode:
+        description: Release train phase. Only publish can mutate.
+        required: false
+        default: prepare
+        type: string
+      dry-run:
+        description: Echo the planned dispatch without mutating the target repository.
+        required: false
+        default: true
+        type: boolean
+      workflow-file:
+        description: Target Release Please workflow file name.
+        required: false
+        default: release-please.yml
+        type: string
+      target-ref:
+        description: Optional target repository ref. Empty publish runs resolve the default branch through the GitHub API.
+        required: false
+        default: ""
+        type: string
+    secrets:
+      SKENION_RELEASE_TRAIN_TOKEN:
+        description: Cross-repository release train token.
+        required: true
+    outputs:
+      target-repo:
+        description: Repository that was planned or dispatched.
+        value: ${{ jobs.dispatch.outputs['target-repo'] }}
+      target-ref:
+        description: Ref used in the workflow dispatch payload.
+        value: ${{ jobs.dispatch.outputs['target-ref'] }}
+      mutated:
+        description: true when the workflow dispatch API was called.
+        value: ${{ jobs.dispatch.outputs.mutated }}
+      dispatch-payload:
+        description: Path to the structured dispatch payload artifact source.
+        value: ${{ jobs.dispatch.outputs['dispatch-payload'] }}
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  dispatch:
+    name: Dispatch Release Please
+    runs-on: ubuntu-latest
+    outputs:
+      target-repo: ${{ steps.dispatch.outputs['target-repo'] }}
+      target-ref: ${{ steps.dispatch.outputs['target-ref'] }}
+      mutated: ${{ steps.dispatch.outputs.mutated }}
+      dispatch-payload: ${{ steps.dispatch.outputs['dispatch-payload'] }}
+    steps:
+      - name: Checkout workflow library
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .skenion-ci
+          persist-credentials: false
+
+      - name: Dispatch Release Please workflow
+        id: dispatch
+        shell: bash
+        run: >-
+          node .skenion-ci/scripts/dispatch-release-please.mjs
+          --target-repo "${TARGET_REPO}"
+          --train-version "${TRAIN_VERSION}"
+          --mode "${MODE}"
+          --dry-run "${DRY_RUN}"
+          --workflow-file "${WORKFLOW_FILE}"
+          --target-ref "${TARGET_REF}"
+          --out-dir .skenion-train
+        env:
+          GH_TOKEN: ${{ secrets.SKENION_RELEASE_TRAIN_TOKEN }}
+          TARGET_REPO: ${{ inputs.target-repo }}
+          TRAIN_VERSION: ${{ inputs.train-version }}
+          MODE: ${{ inputs.mode }}
+          DRY_RUN: ${{ inputs.dry-run }}
+          WORKFLOW_FILE: ${{ inputs.workflow-file }}
+          TARGET_REF: ${{ inputs.target-ref }}
