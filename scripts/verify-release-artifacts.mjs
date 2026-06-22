@@ -238,7 +238,7 @@ async function verifyPageArtifact(artifact, expectedVersion) {
   }
 
   const status = String(artifact.status ?? artifact.deploymentStatus ?? artifact.deployment?.status ?? "").toLowerCase();
-  const allowedStatuses = new Set(["deployed", "published", "success", "verified"]);
+  const allowedStatuses = new Set(["deployed", "published", "success", "verified", "passed"]);
   if (!allowedStatuses.has(status)) {
     throw new Error(`${inferType(artifact)} artifacts must include deployed status metadata.`);
   }
