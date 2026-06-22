@@ -31,7 +31,7 @@ try {
   const manifest = loaded.manifest;
   const warnings = [];
   const validation = validateTrainManifestInvariants(manifest, expectedVersion);
-  const { errors, header, components, order, targets, trainVersion, trainId } = validation;
+  const { errors, header, components, order, targets, studioTargets, trainVersion, trainId } = validation;
 
   if (mode === "verify") {
     warnings.push("verify mode validates manifest structure here; artifact existence is checked by verify-release-artifacts.yml.");
@@ -46,6 +46,8 @@ try {
     componentCount: components.length,
     releaseOrder: order,
     runtimeTargets: targets,
+    studioDesktopTargets: studioTargets.desktopPackages,
+    studioRuntimeSidecarTargets: studioTargets.runtimeSidecars,
     manifestSource: loaded.label,
     normalizedManifestPath: loaded.normalizedPath,
     warnings,
@@ -87,6 +89,8 @@ function renderSummary(summary, errors) {
     `- Components: ${summary.componentCount}`,
     `- Release order: ${summary.releaseOrder.join(" -> ") || "(missing)"}`,
     `- Runtime targets: ${summary.runtimeTargets.join(", ") || "(missing)"}`,
+    `- Studio desktop targets: ${summary.studioDesktopTargets.join(", ") || "(missing)"}`,
+    `- Studio runtime sidecar targets: ${summary.studioRuntimeSidecarTargets.join(", ") || "(missing)"}`,
     `- Normalized manifest: ${summary.normalizedManifestPath}`,
     ...summary.warnings.map((warning) => `- Warning: ${warning}`),
     ...(errors.length === 0 ? [] : ["", "### Errors", "", ...errors.map((error) => `- ${error}`)]),
