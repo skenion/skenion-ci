@@ -1,4 +1,4 @@
-name: Verify release artifacts
+name: Verify release artifacts v1 deprecated
 
 on:
   workflow_call:
@@ -17,7 +17,7 @@ on:
         required: true
         type: string
     secrets:
-      SKENION_RELEASE_TRAIN_TOKEN:
+      GH_TOKEN:
         description: Token used to read private releases and release assets when required.
         required: true
     outputs:
@@ -82,6 +82,6 @@ jobs:
           --train-version "${TRAIN_VERSION}"
           --out-dir .skenion-train
         env:
-          GH_TOKEN: ${{ secrets.SKENION_RELEASE_TRAIN_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
           MANIFEST: ${{ inputs.manifest }}
           TRAIN_VERSION: ${{ inputs.train-version }}
