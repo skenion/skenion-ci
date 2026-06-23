@@ -48,7 +48,7 @@ try {
   const { header, components } = validation;
   const artifacts = extractArtifacts(manifest, components);
   if (artifacts.length === 0) {
-    throw new Error("Manifest must describe release artifacts before verify-release-artifacts can pass. Add artifacts or releaseArtifacts entries with supported types: github-release, npm, crate, url.");
+    throw new Error("Manifest must describe release artifacts before verify-release-artifacts can pass. Add artifacts entries or release-gates with supported types: github-release, npm, crate, url.");
   }
 
   const results = [];
@@ -72,13 +72,13 @@ try {
     schema: "skenion.release-artifact-verification.v1",
     name: "skenion Release Artifact Verification",
     version: 1,
-    trainId: header.trainId,
-    trainVersion: expectedVersion,
-    manifestSource: loaded.label,
-    verifiedAt: new Date().toISOString(),
-    artifactCount: artifacts.length,
-    passedCount: results.filter((result) => result.status === "passed").length,
-    failedCount: errors.length,
+    "train-id": header["train-id"],
+    "train-version": expectedVersion,
+    "manifest-source": loaded.label,
+    "verified-at": new Date().toISOString(),
+    "artifact-count": artifacts.length,
+    "passed-count": results.filter((result) => result.status === "passed").length,
+    "failed-count": errors.length,
     results,
   };
 
@@ -89,9 +89,9 @@ try {
   writeText(summaryPath, summary);
   appendStepSummary(summary);
 
-  setOutput("verified-count", String(report.passedCount));
+  setOutput("verified-count", String(report["passed-count"]));
   setOutput("report-path", reportPath);
-  setOutput("summary", `${report.passedCount}/${report.artifactCount} release artifacts verified for ${expectedVersion}.`);
+  setOutput("summary", `${report["passed-count"]}/${report["artifact-count"]} release artifacts verified for ${expectedVersion}.`);
 
   if (errors.length > 0) {
     console.error("Release artifact verification failed:");
@@ -101,7 +101,7 @@ try {
     process.exit(1);
   }
 
-  console.log(`Verified ${report.passedCount} release artifacts for ${expectedVersion}.`);
+  console.log(`Verified ${report["passed-count"]} release artifacts for ${expectedVersion}.`);
 } catch (error) {
   console.error(`::error::${error.message}`);
   process.exit(1);
@@ -109,7 +109,7 @@ try {
 
 async function verifyArtifact(artifact, expectedVersion, token) {
   const type = inferType(artifact);
-  const version = artifact.version ?? artifact.trainVersion;
+  const version = artifact.version ?? artifact["train-version"];
   if (!version) {
     throw new Error(`${type} artifacts must include an explicit version matching the train version.`);
   }
@@ -138,7 +138,7 @@ async function verifyArtifact(artifact, expectedVersion, token) {
 
 async function verifyGitHubRelease(artifact, token) {
   const repo = artifact.repository ?? artifact.repo;
-  const tag = artifact.tag ?? artifact.tagName;
+  const tag = artifact.tag;
   validateRepo(repo);
   if (!tag) {
     throw new Error("github-release artifacts must include an explicit tag.");
@@ -175,18 +175,18 @@ async function verifyGitHubRelease(artifact, token) {
     type: "github-release",
     label: `${repo}@${tag}`,
     status: "passed",
-    assetCount: release.assets.length,
-    checkedAssets: expectedAssets.map((asset) => asset.name),
-    checksumChecks,
+    "asset-count": release.assets.length,
+    "checked-assets": expectedAssets.map((asset) => asset.name),
+    "checksum-checks": checksumChecks,
   };
 }
 
 async function verifyNpmPackage(artifact, expectedVersion) {
-  const packageName = artifact.package ?? artifact.npmPackage;
+  const packageName = artifact.package;
   if (!packageName) {
-    throw new Error("npm artifacts must include package or npmPackage.");
+    throw new Error("npm artifacts must include package.");
   }
-  const registry = stripTrailingSlash(artifact.registry ?? artifact.registryUrl ?? "https://registry.npmjs.org");
+  const registry = stripTrailingSlash(artifact.registry ?? artifact["registry-url"] ?? "https://registry.npmjs.org");
   const metadata = await fetchJson(`${registry}/${encodeURIComponent(packageName)}`);
   if (!metadata.versions?.[expectedVersion]) {
     throw new Error(`npm package ${packageName}@${expectedVersion} was not found in ${registry}.`);
@@ -206,7 +206,7 @@ async function verifyCrate(artifact, expectedVersion) {
   if (!crate) {
     throw new Error("crate artifacts must include crate.");
   }
-  const registry = stripTrailingSlash(artifact.registry ?? artifact.registryUrl ?? "https://crates.io");
+  const registry = stripTrailingSlash(artifact.registry ?? artifact["registry-url"] ?? "https://crates.io");
   await fetchJson(`${registry}/api/v1/crates/${encodeURIComponent(crate)}/${expectedVersion}`);
 
   return {
@@ -246,12 +246,12 @@ async function verifyPageArtifact(artifact, expectedVersion) {
     throw new Error(`${inferType(artifact)} artifacts must include url.`);
   }
 
-  const deployedVersion = artifact.deployedVersion ?? artifact.manualVersion ?? artifact.pageVersion ?? artifact.deployment?.version;
+  const deployedVersion = artifact["deployed-version"] ?? artifact["manual-version"] ?? artifact["page-version"] ?? artifact.deployment?.version;
   if (deployedVersion !== expectedVersion) {
-    throw new Error(`${inferType(artifact)} artifacts must include deployedVersion, manualVersion, pageVersion, or deployment.version matching "${expectedVersion}".`);
+    throw new Error(`${inferType(artifact)} artifacts must include deployed-version, manual-version, page-version, or deployment.version matching "${expectedVersion}".`);
   }
 
-  const status = String(artifact.status ?? artifact.deploymentStatus ?? artifact.deployment?.status ?? "").toLowerCase();
+  const status = String(artifact.status ?? artifact["deployment-status"] ?? artifact.deployment?.status ?? "").toLowerCase();
   const allowedStatuses = new Set(["deployed", "published", "success", "verified", "passed"]);
   if (!allowedStatuses.has(status)) {
     throw new Error(`${inferType(artifact)} artifacts must include deployed status metadata.`);
@@ -264,7 +264,7 @@ async function verifyPageArtifact(artifact, expectedVersion) {
     type: inferType(artifact),
     label: url,
     status: "passed",
-    deployedVersion,
+    "deployed-version": deployedVersion,
   };
 }
 
@@ -417,13 +417,13 @@ function inferType(artifact) {
   if (explicit) {
     return explicit.replaceAll("_", "-");
   }
-  if (artifact.package || artifact.npmPackage) {
+  if (artifact.package) {
     return "npm";
   }
   if (artifact.crate) {
     return "crate";
   }
-  if ((artifact.repository || artifact.repo) && (artifact.tag || artifact.tagName)) {
+  if ((artifact.repository || artifact.repo) && artifact.tag) {
     return "github-release";
   }
   if (artifact.url || artifact.href) {
@@ -501,16 +501,16 @@ function stripTrailingSlash(value) {
 }
 
 function artifactLabel(artifact) {
-  return artifact.name ?? artifact.package ?? artifact.npmPackage ?? artifact.crate ?? artifact.url ?? artifact.tag ?? inferType(artifact);
+  return artifact.name ?? artifact.package ?? artifact.crate ?? artifact.url ?? artifact.tag ?? inferType(artifact);
 }
 
 function renderSummary(report, errors) {
   return [
     "## Release Artifact Verification",
     "",
-    `- Train: ${report.trainId} (${report.trainVersion})`,
+    `- Train: ${report["train-id"]} (${report["train-version"]})`,
     `- Status: ${errors.length === 0 ? "passed" : "failed"}`,
-    `- Artifacts: ${report.passedCount}/${report.artifactCount} passed`,
+    `- Artifacts: ${report["passed-count"]}/${report["artifact-count"]} passed`,
     "",
     "### Results",
     "",

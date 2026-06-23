@@ -22,8 +22,8 @@ const EXPECTED_PROTOCOL_BASELINES = {
   project: "0.1",
   node: "0.1",
   extension: "0.1",
-  runtimeHttp: "v0",
-  runtimeCollaboration: "v0",
+  "runtime-http": "v0",
+  "runtime-collaboration": "v0",
 };
 
 const EXPECTED_CONNECTION_PROFILES = ["local-managed", "local-shared", "remote"];
@@ -71,8 +71,8 @@ export function validateTrainManifestInvariants(manifest, expectedVersion) {
   const order = releaseOrder(manifest);
   const targets = extractRuntimeTargets(manifest, components);
   const studioTargets = extractStudioTargets(manifest, components);
-  const trainVersion = header.trainVersion ?? expectedVersion;
-  const trainId = header.trainId ?? expectedTrainId(trainVersion);
+  const trainVersion = header["train-version"] ?? expectedVersion;
+  const trainId = header["train-id"] ?? expectedTrainId(trainVersion);
 
   if (!isPlainObject(manifest)) {
     errors.push("Manifest must be a JSON object.");
@@ -80,13 +80,13 @@ export function validateTrainManifestInvariants(manifest, expectedVersion) {
 
   validateHeader(header, expectedVersion, errors);
   validateContractsManifestShape(manifest, errors);
-  validateProtocolBaselines(manifest?.protocolBaselines, "protocolBaselines", errors);
-  validateCapabilitySet(manifest?.capabilitySet, errors);
+  validateProtocolBaselines(manifest?.["protocol-baselines"], "protocol-baselines", errors);
+  validateCapabilitySet(manifest?.["capability-set"], errors);
   validateComponents(manifest, components, expectedVersion, trainId, errors);
   validateReleaseOrder(manifest, order, components, errors);
   validateTargetMatrix(targets, REQUIRED_RUNTIME_TARGETS, "Runtime artifact target matrix", errors);
-  validateTargetMatrix(studioTargets.desktopPackages, REQUIRED_STUDIO_TARGETS, "Studio desktop package target matrix", errors);
-  validateTargetMatrix(studioTargets.runtimeSidecars, REQUIRED_STUDIO_TARGETS, "Studio runtime sidecar target matrix", errors);
+  validateTargetMatrix(studioTargets["desktop-packages"], REQUIRED_STUDIO_TARGETS, "Studio desktop package target matrix", errors);
+  validateTargetMatrix(studioTargets["runtime-sidecars"], REQUIRED_STUDIO_TARGETS, "Studio runtime sidecar target matrix", errors);
   validateReleaseGates(manifest, expectedVersion, errors);
   validateExplicitDownloadArtifacts(manifest, components, errors);
 
@@ -106,26 +106,26 @@ function validateHeader(header, expectedVersion, errors) {
   if (header.schema !== EXPECTED_TRAIN_MANIFEST_SCHEMA) {
     errors.push(`Manifest schema must be exactly "${EXPECTED_TRAIN_MANIFEST_SCHEMA}".`);
   }
-  if (header.schemaVersion !== EXPECTED_TRAIN_MANIFEST_SCHEMA_VERSION) {
-    errors.push(`Manifest schemaVersion must be exactly "${EXPECTED_TRAIN_MANIFEST_SCHEMA_VERSION}".`);
+  if (header["schema-version"] !== EXPECTED_TRAIN_MANIFEST_SCHEMA_VERSION) {
+    errors.push(`Manifest schema-version must be exactly "${EXPECTED_TRAIN_MANIFEST_SCHEMA_VERSION}".`);
   }
-  if (!isNonEmptyString(header.trainVersion)) {
-    errors.push("Manifest must include a non-empty trainVersion field.");
-  } else if (header.trainVersion !== expectedVersion) {
-    errors.push(`Manifest trainVersion "${header.trainVersion}" does not match expected train version "${expectedVersion}".`);
+  if (!isNonEmptyString(header["train-version"])) {
+    errors.push("Manifest must include a non-empty train-version field.");
+  } else if (header["train-version"] !== expectedVersion) {
+    errors.push(`Manifest train-version "${header["train-version"]}" does not match expected train version "${expectedVersion}".`);
   }
-  if (!isNonEmptyString(header.trainId)) {
-    errors.push("Manifest must include a non-empty trainId field.");
+  if (!isNonEmptyString(header["train-id"])) {
+    errors.push("Manifest must include a non-empty train-id field.");
   } else {
     const expectedId = expectedTrainId(expectedVersion);
-    if (expectedId && header.trainId !== expectedId) {
-      errors.push(`Manifest trainId "${header.trainId}" does not match expected train id "${expectedId}".`);
+    if (expectedId && header["train-id"] !== expectedId) {
+      errors.push(`Manifest train-id "${header["train-id"]}" does not match expected train id "${expectedId}".`);
     }
   }
 }
 
 function validateContractsManifestShape(manifest, errors) {
-  for (const field of ["protocolBaselines", "capabilitySet", "components", "releaseGates"]) {
+  for (const field of ["protocol-baselines", "capability-set", "components", "release-gates"]) {
     if (!isPlainObject(manifest?.[field])) {
       errors.push(`Manifest must include a ${field} object.`);
     }
@@ -154,55 +154,55 @@ function validateCapabilitySet(value, errors) {
     return;
   }
 
-  validateProtocolBaselines(value.protocolSurfaces, "capabilitySet.protocolSurfaces", errors);
+  validateProtocolBaselines(value["protocol-surfaces"], "capability-set.protocol-surfaces", errors);
   validateExactCapabilityObject(
     value.runtime,
-    "capabilitySet.runtime",
+    "capability-set.runtime",
     {
-      sessionAddressing: true,
-      eventReplay: true,
-      multiWindow: true,
+      "session-addressing": true,
+      "event-replay": true,
+      "multi-window": true,
       collaboration: "server-authoritative-ot",
-      operationLog: true,
-      ioDiscovery: "raw-descriptor",
-      authPolicy: "deferred",
+      "operation-log": true,
+      "io-discovery": "raw-descriptor",
+      "auth-policy": "deferred",
     },
     errors,
   );
-  validateConnectionProfiles(value.runtime?.connectionProfiles, "capabilitySet.runtime.connectionProfiles", errors);
+  validateConnectionProfiles(value.runtime?.["connection-profiles"], "capability-set.runtime.connection-profiles", errors);
   validateExactCapabilityObject(
     value.studio,
-    "capabilitySet.studio",
+    "capability-set.studio",
     {
-      graphEditor: true,
-      patchLibrary: true,
+      "graph-editor": true,
+      "patch-library": true,
       subpatches: true,
-      livingHelp: true,
-      graphClipboard: true,
-      desktopShell: "tauri",
+      "living-help": true,
+      "graph-clipboard": true,
+      "desktop-shell": "tauri",
     },
     errors,
   );
-  validateConnectionProfiles(value.studio?.connectionProfiles, "capabilitySet.studio.connectionProfiles", errors);
+  validateConnectionProfiles(value.studio?.["connection-profiles"], "capability-set.studio.connection-profiles", errors);
   validateExactCapabilityObject(
     value.marketplace,
-    "capabilitySet.marketplace",
+    "capability-set.marketplace",
     {
-      packageDiscovery: true,
-      packageInstall: true,
-      packageUpdate: true,
-      extensionPackages: true,
+      "package-discovery": true,
+      "package-install": true,
+      "package-update": true,
+      "extension-packages": true,
     },
     errors,
   );
   validateExactCapabilityObject(
     value.manual,
-    "capabilitySet.manual",
+    "capability-set.manual",
     {
-      versionedPaths: true,
-      pagesDeployment: true,
-      latestPromotionRequiresMatrix: true,
-      patchReleasesUseMajorMinorPath: true,
+      "versioned-paths": true,
+      "pages-deployment": true,
+      "latest-promotion-requires-matrix": true,
+      "patch-releases-use-major-minor-path": true,
     },
     errors,
   );
@@ -297,8 +297,8 @@ function validateComponents(manifest, components, expectedVersion, trainId, erro
     errors,
   );
   validateArtifactMap(
-    rawComponents.studio?.desktopPackages,
-    "components.studio.desktopPackages",
+    rawComponents.studio?.["desktop-packages"],
+    "components.studio.desktop-packages",
     "studio-desktop-package",
     expectedVersion,
     CANONICAL_COMPONENT_REPOSITORIES.studio,
@@ -308,8 +308,8 @@ function validateComponents(manifest, components, expectedVersion, trainId, erro
     },
   );
   validateArtifactMap(
-    rawComponents.studio?.runtimeSidecars,
-    "components.studio.runtimeSidecars",
+    rawComponents.studio?.["runtime-sidecars"],
+    "components.studio.runtime-sidecars",
     "studio-runtime-sidecar",
     expectedVersion,
     CANONICAL_COMPONENT_REPOSITORIES.studio,
@@ -373,8 +373,8 @@ function validateArtifactMap(artifactMap, label, expectedKind, expectedVersion, 
     if (artifact.target !== target) {
       errors.push(`${label}.${target}.target must match the map key.`);
     }
-    if (artifact.supportTier !== expectedSupportTier(target)) {
-      errors.push(`${label}.${target}.supportTier must be "${expectedSupportTier(target)}".`);
+    if (artifact["support-tier"] !== expectedSupportTier(target)) {
+      errors.push(`${label}.${target}["support-tier"] must be "${expectedSupportTier(target)}".`);
     }
     if (artifact.kind !== expectedKind) {
       errors.push(`${label}.${target}.kind must be "${expectedKind}".`);
@@ -393,8 +393,8 @@ function validateArtifactMap(artifactMap, label, expectedKind, expectedVersion, 
       if (artifact.name !== expectedName) {
         errors.push(`${label}.${target}.name must be exactly "${expectedName}".`);
       }
-      if (artifact.source?.kind === "github-release-asset" && artifact.source.assetName !== expectedName) {
-        errors.push(`${label}.${target}.source.assetName must be exactly "${expectedName}".`);
+      if (artifact.source?.kind === "github-release-asset" && artifact.source["asset-name"] !== expectedName) {
+        errors.push(`${label}.${target}.source["asset-name"] must be exactly "${expectedName}".`);
       }
     }
     validateArtifactSource(artifact.source, `${label}.${target}.source`, artifact.checksum, errors, expectedRepository);
@@ -437,8 +437,8 @@ function validateStudioWebBundleArtifact(artifact, expectedVersion, errors) {
     if (artifact.source.tag !== expectedTag) {
       errors.push(`${label}.source.tag must be exactly "${expectedTag}".`);
     }
-    if (artifact.source.assetName !== expectedName) {
-      errors.push(`${label}.source.assetName must be exactly "${expectedName}".`);
+    if (artifact.source["asset-name"] !== expectedName) {
+      errors.push(`${label}.source["asset-name"] must be exactly "${expectedName}".`);
     }
   }
   validateChecksum(artifact.checksum, `${label}.checksum`, errors);
@@ -459,8 +459,8 @@ function validateArtifactSource(source, label, checksum, errors, expectedReposit
     if (!isNonEmptyString(source.tag)) {
       errors.push(`${label}.tag must be a non-empty string.`);
     }
-    if (!isNonEmptyString(source.assetName)) {
-      errors.push(`${label}.assetName must be a non-empty string.`);
+    if (!isNonEmptyString(source["asset-name"])) {
+      errors.push(`${label}["asset-name"] must be a non-empty string.`);
     }
     if (source.url !== undefined && source.url !== null && !isNonEmptyString(source.url)) {
       errors.push(`${label}.url must be null or a non-empty string.`);
@@ -527,15 +527,15 @@ function validateDocsComponent(docs, expectedVersion, trainId, errors) {
     errors.push(`components.docs.manual.path must be exactly "${expectedPath}".`);
   }
   const expectedPagesUrl = `${CANONICAL_DOCS_PAGES_ORIGIN}${expectedPath}`;
-  if (manual.pagesUrl !== expectedPagesUrl) {
-    errors.push(`components.docs.manual.pagesUrl must be exactly "${expectedPagesUrl}".`);
+  if (manual["pages-url"] !== expectedPagesUrl) {
+    errors.push(`components.docs.manual.pages-url must be exactly "${expectedPagesUrl}".`);
   }
 }
 
 function validateReleaseOrder(manifest, order, components, errors) {
   const explicit = explicitReleaseOrder(manifest);
   if (explicit !== undefined && !Array.isArray(explicit)) {
-    errors.push("releaseOrder must be an array when provided.");
+    errors.push("release-order must be an array when provided.");
     return;
   }
 
@@ -549,16 +549,16 @@ function validateReleaseOrder(manifest, order, components, errors) {
     }
     seenOrderNames.add(name);
     if (!componentNames.has(name)) {
-      errors.push(`releaseOrder references unknown component "${name}".`);
+      errors.push(`release-order references unknown component "${name}".`);
     }
   }
 
   for (const name of duplicates) {
-    errors.push(`releaseOrder includes duplicate component "${name}".`);
+    errors.push(`release-order includes duplicate component "${name}".`);
   }
 
   if (!arraysEqual(order, EXPECTED_RELEASE_ORDER)) {
-    errors.push(`releaseOrder must be exactly ${EXPECTED_RELEASE_ORDER.join(" -> ")}.`);
+    errors.push(`release-order must be exactly ${EXPECTED_RELEASE_ORDER.join(" -> ")}.`);
   }
 }
 
@@ -582,59 +582,59 @@ function validateTargetMatrix(targets, requiredTargets, label, errors) {
 }
 
 function validateReleaseGates(manifest, expectedVersion, errors) {
-  const releaseGates = manifest?.releaseGates;
+  const releaseGates = manifest?.["release-gates"];
   const components = isPlainObject(manifest?.components) ? manifest.components : {};
   if (!isPlainObject(releaseGates)) {
     return;
   }
 
-  validateRegistryPackageGates(releaseGates.registryPackages, components, expectedVersion, errors);
+  validateRegistryPackageGates(releaseGates["registry-packages"], components, expectedVersion, errors);
 
   const artifactsById = releaseTrainArtifactsById(manifest, errors);
   validateArtifactCollectionGate(
-    releaseGates.githubReleaseAssets?.runtime,
-    "releaseGates.githubReleaseAssets.runtime",
+    releaseGates["github-release-assets"]?.runtime,
+    "release-gates.github-release-assets.runtime",
     artifactsById,
     CANONICAL_COMPONENT_REPOSITORIES.runtime,
     errors,
   );
   validateArtifactCollectionGate(
-    releaseGates.githubReleaseAssets?.studio,
-    "releaseGates.githubReleaseAssets.studio",
+    releaseGates["github-release-assets"]?.studio,
+    "release-gates.github-release-assets.studio",
     artifactsById,
     CANONICAL_COMPONENT_REPOSITORIES.studio,
     errors,
   );
-  validateChecksumGate(releaseGates.checksumVerification, artifactsById, errors);
+  validateChecksumGate(releaseGates["checksum-verification"], artifactsById, errors);
   validateStudioWebBundleGateMembership(releaseGates, components.studio?.["web-bundle"], errors);
-  validateRuntimeSmokeGates(releaseGates.runtimeSmoke, components.runtime?.binaries, artifactsById, errors);
-  validateStudioSmokeGates(releaseGates.studioPackageSmoke, components.studio?.desktopPackages, components.studio?.runtimeSidecars, artifactsById, errors);
-  validateExamplesConformanceGate(releaseGates.examplesConformance, components.examples, expectedVersion, errors);
-  validateDocsPagesDeploymentGate(releaseGates.docsPagesDeployment, components.docs?.manual, expectedVersion, errors);
+  validateRuntimeSmokeGates(releaseGates["runtime-smoke"], components.runtime?.binaries, artifactsById, errors);
+  validateStudioSmokeGates(releaseGates["studio-package-smoke"], components.studio?.["desktop-packages"], components.studio?.["runtime-sidecars"], artifactsById, errors);
+  validateExamplesConformanceGate(releaseGates["examples-conformance"], components.examples, expectedVersion, errors);
+  validateDocsPagesDeploymentGate(releaseGates["docs-pages-deployment"], components.docs?.manual, expectedVersion, errors);
 }
 
 function validateRegistryPackageGates(registryPackages, components, expectedVersion, errors) {
   if (!isPlainObject(registryPackages)) {
-    errors.push("releaseGates.registryPackages must be an object.");
+    errors.push("release-gates.registry-packages must be an object.");
     return;
   }
 
   const gates = [
-    ["contractsNpm", "components.contracts.npm", components.contracts?.npm],
-    ["contractsCrate", "components.contracts.crate", components.contracts?.crate],
-    ["sdkNpm", "components.sdk.npm", components.sdk?.npm],
+    ["contracts-npm", "components.contracts.npm", components.contracts?.npm],
+    ["contracts-crate", "components.contracts.crate", components.contracts?.crate],
+    ["sdk-npm", "components.sdk.npm", components.sdk?.npm],
   ];
   const allowedGateNames = new Set(gates.map(([gateName]) => gateName));
 
   for (const gateName of Object.keys(registryPackages)) {
     if (!allowedGateNames.has(gateName)) {
-      errors.push(`releaseGates.registryPackages.${gateName} is outside the v0 registry publish surface. Registry gates are only for importable library packages.`);
+      errors.push(`release-gates.registry-packages.${gateName} is outside the v0 registry publish surface. Registry gates are only for importable library packages.`);
     }
   }
 
   for (const [gateName, componentLabel, componentPackage] of gates) {
     const gate = registryPackages[gateName];
-    const gateLabel = `releaseGates.registryPackages.${gateName}`;
+    const gateLabel = `release-gates.registry-packages.${gateName}`;
     validateGateBase(gate, gateLabel, errors);
     if (!isPlainObject(gate)) {
       continue;
@@ -665,16 +665,16 @@ function validateArtifactCollectionGate(gate, label, artifactsById, expectedRepo
   if (!isNonEmptyString(gate.tag)) {
     errors.push(`${label}.tag must be a non-empty string.`);
   }
-  if (!Array.isArray(gate.artifactIds) || gate.artifactIds.length === 0) {
-    errors.push(`${label}.artifactIds must be a non-empty array.`);
+  if (!Array.isArray(gate["artifact-ids"]) || gate["artifact-ids"].length === 0) {
+    errors.push(`${label}.artifact-ids must be a non-empty array.`);
     return;
   }
 
-  validateUniqueStrings(gate.artifactIds, `${label}.artifactIds`, errors);
-  for (const artifactId of gate.artifactIds) {
+  validateUniqueStrings(gate["artifact-ids"], `${label}.artifact-ids`, errors);
+  for (const artifactId of gate["artifact-ids"]) {
     const artifact = artifactsById.get(artifactId);
     if (!artifact) {
-      errors.push(`${label}.artifactIds references unknown artifact "${artifactId}".`);
+      errors.push(`${label}.artifact-ids references unknown artifact "${artifactId}".`);
       continue;
     }
     if (artifact.source?.kind === "github-release-asset") {
@@ -693,75 +693,75 @@ function validateStudioWebBundleGateMembership(releaseGates, webBundleArtifact, 
     return;
   }
   const artifactId = webBundleArtifact.id;
-  if (!Array.isArray(releaseGates.githubReleaseAssets?.studio?.artifactIds)) {
+  if (!Array.isArray(releaseGates["github-release-assets"]?.studio?.["artifact-ids"])) {
     return;
   }
-  if (!releaseGates.githubReleaseAssets.studio.artifactIds.includes(artifactId)) {
-    errors.push(`releaseGates.githubReleaseAssets.studio.artifactIds must include components.studio["web-bundle"].id.`);
+  if (!releaseGates["github-release-assets"].studio["artifact-ids"].includes(artifactId)) {
+    errors.push(`release-gates.github-release-assets.studio.artifact-ids must include components.studio["web-bundle"].id.`);
   }
-  if (Array.isArray(releaseGates.checksumVerification?.artifactIds) && !releaseGates.checksumVerification.artifactIds.includes(artifactId)) {
-    errors.push(`releaseGates.checksumVerification.artifactIds must include components.studio["web-bundle"].id.`);
+  if (Array.isArray(releaseGates["checksum-verification"]?.["artifact-ids"]) && !releaseGates["checksum-verification"]["artifact-ids"].includes(artifactId)) {
+    errors.push(`release-gates.checksum-verification.artifact-ids must include components.studio["web-bundle"].id.`);
   }
 }
 
 function validateChecksumGate(gate, artifactsById, errors) {
-  const label = "releaseGates.checksumVerification";
+  const label = "release-gates.checksum-verification";
   validateGateBase(gate, label, errors);
   if (!isPlainObject(gate)) {
     return;
   }
-  if (!Array.isArray(gate.artifactIds) || gate.artifactIds.length === 0) {
-    errors.push(`${label}.artifactIds must be a non-empty array.`);
+  if (!Array.isArray(gate["artifact-ids"]) || gate["artifact-ids"].length === 0) {
+    errors.push(`${label}.artifact-ids must be a non-empty array.`);
     return;
   }
 
-  validateUniqueStrings(gate.artifactIds, `${label}.artifactIds`, errors);
-  for (const artifactId of gate.artifactIds) {
+  validateUniqueStrings(gate["artifact-ids"], `${label}.artifact-ids`, errors);
+  for (const artifactId of gate["artifact-ids"]) {
     if (!artifactsById.has(artifactId)) {
-      errors.push(`${label}.artifactIds references unknown artifact "${artifactId}".`);
+      errors.push(`${label}.artifact-ids references unknown artifact "${artifactId}".`);
     }
   }
 
-  if (gate.expectedChecksums !== undefined && !isPlainObject(gate.expectedChecksums)) {
-    errors.push(`${label}.expectedChecksums must be an object when provided.`);
+  if (gate["expected-checksums"] !== undefined && !isPlainObject(gate["expected-checksums"])) {
+    errors.push(`${label}["expected-checksums"] must be an object when provided.`);
     return;
   }
 
-  for (const [artifactId, expectedChecksum] of Object.entries(gate.expectedChecksums ?? {})) {
+  for (const [artifactId, expectedChecksum] of Object.entries(gate["expected-checksums"] ?? {})) {
     const artifact = artifactsById.get(artifactId);
     if (!artifact) {
-      errors.push(`${label}.expectedChecksums references unknown artifact "${artifactId}".`);
+      errors.push(`${label}["expected-checksums"] references unknown artifact "${artifactId}".`);
       continue;
     }
-    validateChecksum(expectedChecksum, `${label}.expectedChecksums.${artifactId}`, errors);
+    validateChecksum(expectedChecksum, `${label}["expected-checksums"].${artifactId}`, errors);
     if (artifact.checksum?.value === null && expectedChecksum.value !== null) {
-      errors.push(`${label}.expectedChecksums.${artifactId} cannot pin a checksum while the artifact checksum is null.`);
+      errors.push(`${label}["expected-checksums"].${artifactId} cannot pin a checksum while the artifact checksum is null.`);
     }
     if (
       isSha256(artifact.checksum?.value) &&
       isSha256(expectedChecksum.value) &&
       artifact.checksum.value.toLowerCase() !== expectedChecksum.value.toLowerCase()
     ) {
-      errors.push(`${label}.expectedChecksums.${artifactId} must match the artifact checksum.`);
+      errors.push(`${label}["expected-checksums"].${artifactId} must match the artifact checksum.`);
     }
   }
 }
 
 function validateRuntimeSmokeGates(runtimeSmoke, runtimeBinaries, artifactsById, errors) {
   if (!isPlainObject(runtimeSmoke)) {
-    errors.push("releaseGates.runtimeSmoke must be an object.");
+    errors.push("release-gates.runtime-smoke must be an object.");
     return;
   }
 
   for (const target of Object.keys(runtimeSmoke)) {
     if (!REQUIRED_RUNTIME_TARGETS.includes(target)) {
-      errors.push(`releaseGates.runtimeSmoke includes unsupported target "${target}".`);
+      errors.push(`release-gates.runtime-smoke includes unsupported target "${target}".`);
     }
   }
 
   for (const target of REQUIRED_RUNTIME_TARGETS) {
     const gate = runtimeSmoke[target];
-    const label = `releaseGates.runtimeSmoke.${target}`;
+    const label = `release-gates.runtime-smoke.${target}`;
     validateGateBase(gate, label, errors);
     if (!isPlainObject(gate)) {
       continue;
@@ -769,31 +769,31 @@ function validateRuntimeSmokeGates(runtimeSmoke, runtimeBinaries, artifactsById,
     if (gate.target !== target) {
       errors.push(`${label}.target must match the map key.`);
     }
-    if (!artifactsById.has(gate.artifactId)) {
-      errors.push(`${label}.artifactId references unknown artifact "${gate.artifactId}".`);
+    if (!artifactsById.has(gate["artifact-id"])) {
+      errors.push(`${label}.artifact-id references unknown artifact "${gate["artifact-id"]}".`);
     }
     const artifact = runtimeBinaries?.[target];
-    if (isPlainObject(artifact) && gate.artifactId !== artifact.id) {
-      errors.push(`${label}.artifactId must match components.runtime.binaries.${target}.id.`);
+    if (isPlainObject(artifact) && gate["artifact-id"] !== artifact.id) {
+      errors.push(`${label}.artifact-id must match components.runtime.binaries.${target}.id.`);
     }
   }
 }
 
 function validateStudioSmokeGates(studioSmoke, desktopPackages, runtimeSidecars, artifactsById, errors) {
   if (!isPlainObject(studioSmoke)) {
-    errors.push("releaseGates.studioPackageSmoke must be an object.");
+    errors.push("release-gates.studio-package-smoke must be an object.");
     return;
   }
 
   for (const target of Object.keys(studioSmoke)) {
     if (!REQUIRED_STUDIO_TARGETS.includes(target)) {
-      errors.push(`releaseGates.studioPackageSmoke includes unsupported target "${target}".`);
+      errors.push(`release-gates.studio-package-smoke includes unsupported target "${target}".`);
     }
   }
 
   for (const target of REQUIRED_STUDIO_TARGETS) {
     const gate = studioSmoke[target];
-    const label = `releaseGates.studioPackageSmoke.${target}`;
+    const label = `release-gates.studio-package-smoke.${target}`;
     validateGateBase(gate, label, errors);
     if (!isPlainObject(gate)) {
       continue;
@@ -801,25 +801,25 @@ function validateStudioSmokeGates(studioSmoke, desktopPackages, runtimeSidecars,
     if (gate.target !== target) {
       errors.push(`${label}.target must match the map key.`);
     }
-    if (!artifactsById.has(gate.desktopPackageArtifactId)) {
-      errors.push(`${label}.desktopPackageArtifactId references unknown artifact "${gate.desktopPackageArtifactId}".`);
+    if (!artifactsById.has(gate["desktop-package-artifact-id"])) {
+      errors.push(`${label}.desktop-package-artifact-id references unknown artifact "${gate["desktop-package-artifact-id"]}".`);
     }
-    if (!artifactsById.has(gate.runtimeSidecarArtifactId)) {
-      errors.push(`${label}.runtimeSidecarArtifactId references unknown artifact "${gate.runtimeSidecarArtifactId}".`);
+    if (!artifactsById.has(gate["runtime-sidecar-artifact-id"])) {
+      errors.push(`${label}.runtime-sidecar-artifact-id references unknown artifact "${gate["runtime-sidecar-artifact-id"]}".`);
     }
     const desktopPackage = desktopPackages?.[target];
-    if (isPlainObject(desktopPackage) && gate.desktopPackageArtifactId !== desktopPackage.id) {
-      errors.push(`${label}.desktopPackageArtifactId must match components.studio.desktopPackages.${target}.id.`);
+    if (isPlainObject(desktopPackage) && gate["desktop-package-artifact-id"] !== desktopPackage.id) {
+      errors.push(`${label}.desktop-package-artifact-id must match components.studio.desktop-packages.${target}.id.`);
     }
     const runtimeSidecar = runtimeSidecars?.[target];
-    if (isPlainObject(runtimeSidecar) && gate.runtimeSidecarArtifactId !== runtimeSidecar.id) {
-      errors.push(`${label}.runtimeSidecarArtifactId must match components.studio.runtimeSidecars.${target}.id.`);
+    if (isPlainObject(runtimeSidecar) && gate["runtime-sidecar-artifact-id"] !== runtimeSidecar.id) {
+      errors.push(`${label}.runtime-sidecar-artifact-id must match components.studio.runtime-sidecars.${target}.id.`);
     }
   }
 }
 
 function validateExamplesConformanceGate(gate, examples, expectedVersion, errors) {
-  const label = "releaseGates.examplesConformance";
+  const label = "release-gates.examples-conformance";
   validateGateBase(gate, label, errors);
   if (!isPlainObject(gate)) {
     return;
@@ -839,22 +839,22 @@ function validateExamplesConformanceGate(gate, examples, expectedVersion, errors
 }
 
 function validateDocsPagesDeploymentGate(gate, manual, expectedVersion, errors) {
-  const label = "releaseGates.docsPagesDeployment";
+  const label = "release-gates.docs-pages-deployment";
   validateGateBase(gate, label, errors);
   if (!isPlainObject(gate)) {
     return;
   }
-  if (gate.manualVersion !== expectedVersion) {
-    errors.push(`${label}.manualVersion must equal lockstep train version "${expectedVersion}".`);
+  if (gate["manual-version"] !== expectedVersion) {
+    errors.push(`${label}["manual-version"] must equal lockstep train version "${expectedVersion}".`);
   }
-  if (gate.manualVersion !== manual?.version) {
-    errors.push(`${label}.manualVersion must match components.docs.manual.version.`);
+  if (gate["manual-version"] !== manual?.version) {
+    errors.push(`${label}["manual-version"] must match components.docs.manual.version.`);
   }
-  if (gate.manualPath !== manual?.path) {
-    errors.push(`${label}.manualPath must match components.docs.manual.path.`);
+  if (gate["manual-path"] !== manual?.path) {
+    errors.push(`${label}["manual-path"] must match components.docs.manual.path.`);
   }
-  if (gate.pagesUrl !== manual?.pagesUrl) {
-    errors.push(`${label}.pagesUrl must match components.docs.manual.pagesUrl.`);
+  if (gate["pages-url"] !== manual?.["pages-url"]) {
+    errors.push(`${label}.pages-url must match components.docs.manual.pages-url.`);
   }
 }
 
@@ -952,11 +952,11 @@ export function manifestHeader(manifest) {
 
   return {
     schema: manifest.schema,
-    schemaVersion: manifest.schemaVersion,
+    "schema-version": manifest["schema-version"],
     name: manifest.name,
     version: manifest.version,
-    trainId: manifest.trainId,
-    trainVersion: manifest.trainVersion,
+    "train-id": manifest["train-id"],
+    "train-version": manifest["train-version"],
   };
 }
 
@@ -1011,8 +1011,8 @@ function normalizeComponentFromContractsShape(name, component) {
       ...component,
       name,
       version: firstValue(
-        firstArtifactVersion(component.desktopPackages),
-        firstArtifactVersion(component.runtimeSidecars),
+        firstArtifactVersion(component["desktop-packages"]),
+        firstArtifactVersion(component["runtime-sidecars"]),
         component["web-bundle"]?.version,
         component.web?.version,
         component.desktop?.version,
@@ -1020,7 +1020,7 @@ function normalizeComponentFromContractsShape(name, component) {
       repository:
         component.repository ??
         component.repo ??
-        repositoryFromArtifacts(component.desktopPackages, component.runtimeSidecars) ??
+        repositoryFromArtifacts(component["desktop-packages"], component["runtime-sidecars"]) ??
         repositoryFromArtifacts({ "web-bundle": component["web-bundle"] }) ??
         CANONICAL_COMPONENT_REPOSITORIES.studio,
     });
@@ -1043,7 +1043,7 @@ function normalizeComponentFromContractsShape(name, component) {
       repository:
         component.repository ??
         component.repo ??
-        repositoryFromGitHubPagesUrl(component.manual?.pagesUrl) ??
+        repositoryFromGitHubPagesUrl(component.manual?.["pages-url"]) ??
         CANONICAL_COMPONENT_REPOSITORIES.docs,
     });
   }
@@ -1074,14 +1074,6 @@ export function extractRuntimeTargets(manifest, components = normalizeComponents
   const candidates = [
     manifest?.components?.runtime?.binaries,
     runtime?.binaries,
-    manifest?.artifactTargets,
-    manifest?.targetMatrix,
-    manifest?.artifactTargetMatrix,
-    manifest?.runtime?.artifactTargets,
-    manifest?.runtime?.targetMatrix,
-    runtime?.artifactTargets,
-    runtime?.targetMatrix,
-    runtime?.targets,
   ];
 
   for (const candidate of candidates) {
@@ -1097,8 +1089,8 @@ export function extractRuntimeTargets(manifest, components = normalizeComponents
 export function extractStudioTargets(manifest, components = normalizeComponents(manifest)) {
   const studio = components.find((component) => component.name === "studio");
   return {
-    desktopPackages: collectTargetSet(manifest?.components?.studio?.desktopPackages, studio?.desktopPackages),
-    runtimeSidecars: collectTargetSet(manifest?.components?.studio?.runtimeSidecars, studio?.runtimeSidecars),
+    "desktop-packages": collectTargetSet(manifest?.components?.studio?.["desktop-packages"], studio?.["desktop-packages"]),
+    "runtime-sidecars": collectTargetSet(manifest?.components?.studio?.["runtime-sidecars"], studio?.["runtime-sidecars"]),
   };
 }
 
@@ -1163,12 +1155,10 @@ export function extractArtifacts(manifest, components = normalizeComponents(mani
 function extractExplicitArtifacts(manifest, components = normalizeComponents(manifest)) {
   const artifacts = [];
   collectArtifacts(manifest?.artifacts, {}, artifacts);
-  collectArtifacts(manifest?.releaseArtifacts, {}, artifacts);
   collectArtifacts(manifest?.verification?.artifacts, {}, artifacts);
 
   for (const component of components) {
     collectArtifacts(component.artifacts, { component: component.name }, artifacts);
-    collectArtifacts(component.releaseArtifacts, { component: component.name }, artifacts);
   }
 
   return artifacts;
@@ -1176,12 +1166,12 @@ function extractExplicitArtifacts(manifest, components = normalizeComponents(man
 
 function extractContractsReleaseArtifacts(manifest) {
   const artifacts = [];
-  const releaseGates = manifest?.releaseGates;
+  const releaseGates = manifest?.["release-gates"];
   if (!isPlainObject(releaseGates)) {
     return artifacts;
   }
 
-  for (const [gateName, gate] of Object.entries(releaseGates.registryPackages ?? {})) {
+  for (const [gateName, gate] of Object.entries(releaseGates["registry-packages"] ?? {})) {
     if (!isPlainObject(gate?.package)) {
       continue;
     }
@@ -1206,9 +1196,9 @@ function extractContractsReleaseArtifacts(manifest) {
   }
 
   const artifactsById = releaseTrainArtifactsById(manifest);
-  const checksumGate = checksumGateArtifacts(releaseGates.checksumVerification);
-  collectGitHubReleaseGateArtifact(releaseGates.githubReleaseAssets?.runtime, "runtime", artifactsById, manifest.trainVersion, artifacts, checksumGate);
-  collectGitHubReleaseGateArtifact(releaseGates.githubReleaseAssets?.studio, "studio", artifactsById, manifest.trainVersion, artifacts, checksumGate);
+  const checksumGate = checksumGateArtifacts(releaseGates["checksum-verification"]);
+  collectGitHubReleaseGateArtifact(releaseGates["github-release-assets"]?.runtime, "runtime", artifactsById, manifest["train-version"], artifacts, checksumGate);
+  collectGitHubReleaseGateArtifact(releaseGates["github-release-assets"]?.studio, "studio", artifactsById, manifest["train-version"], artifacts, checksumGate);
 
   for (const artifact of releaseTrainArtifacts(manifest)) {
     if (artifact.source?.kind === "url") {
@@ -1222,14 +1212,14 @@ function extractContractsReleaseArtifacts(manifest) {
     }
   }
 
-  const docsGate = releaseGates.docsPagesDeployment;
+  const docsGate = releaseGates["docs-pages-deployment"];
   if (isPlainObject(docsGate)) {
     artifacts.push({
       component: "docs",
       type: "github-pages",
-      url: docsGate.pagesUrl,
-      version: manifest.trainVersion,
-      deployedVersion: docsGate.manualVersion,
+      url: docsGate["pages-url"],
+      version: manifest["train-version"],
+      "deployed-version": docsGate["manual-version"],
       status: docsGate.status,
     });
   }
@@ -1238,22 +1228,22 @@ function extractContractsReleaseArtifacts(manifest) {
 }
 
 function collectGitHubReleaseGateArtifact(gate, component, artifactsById, trainVersion, artifacts, checksumGate) {
-  if (!isPlainObject(gate) || !Array.isArray(gate.artifactIds)) {
+  if (!isPlainObject(gate) || !Array.isArray(gate["artifact-ids"])) {
     return;
   }
 
-  const assets = gate.artifactIds.flatMap((artifactId) => {
+  const assets = gate["artifact-ids"].flatMap((artifactId) => {
     const artifact = artifactsById.get(artifactId);
     if (!artifact || artifact.source?.kind !== "github-release-asset") {
       return [];
     }
-    const name = artifact.source.assetName ?? artifact.name;
-    const sha256 = artifact.checksum?.value ?? checksumGate.expectedChecksums.get(artifactId)?.value ?? undefined;
+    const name = artifact.source["asset-name"] ?? artifact.name;
+    const sha256 = artifact.checksum?.value ?? checksumGate["expected-checksums"].get(artifactId)?.value ?? undefined;
     return [
       {
         name,
         sha256,
-        checksumRequired: checksumGate.artifactIds.has(artifactId),
+        checksumRequired: checksumGate["artifact-ids"].has(artifactId),
         checksumArtifactId: artifactId,
         checksumSidecarName: `${name}.sha256`,
       },
@@ -1271,16 +1261,16 @@ function collectGitHubReleaseGateArtifact(gate, component, artifactsById, trainV
 }
 
 function checksumGateArtifacts(gate) {
-  const artifactIds = new Set(Array.isArray(gate?.artifactIds) ? gate.artifactIds.filter(isNonEmptyString) : []);
+  const artifactIds = new Set(Array.isArray(gate?.["artifact-ids"]) ? gate["artifact-ids"].filter(isNonEmptyString) : []);
   const expectedChecksums = new Map();
-  if (isPlainObject(gate?.expectedChecksums)) {
-    for (const [artifactId, checksum] of Object.entries(gate.expectedChecksums)) {
+  if (isPlainObject(gate?.["expected-checksums"])) {
+    for (const [artifactId, checksum] of Object.entries(gate["expected-checksums"])) {
       if (isSha256(checksum?.value)) {
         expectedChecksums.set(artifactId, checksum);
       }
     }
   }
-  return { artifactIds, expectedChecksums };
+  return { "artifact-ids": artifactIds, "expected-checksums": expectedChecksums };
 }
 
 function collectArtifacts(value, inherited, artifacts) {
@@ -1316,10 +1306,9 @@ function collectArtifacts(value, inherited, artifacts) {
 
 function isArtifact(value) {
   return Boolean(
-    value.type ||
+      value.type ||
       value.url ||
       value.package ||
-      value.npmPackage ||
       value.crate ||
       value.repository ||
       value.repo ||
@@ -1333,11 +1322,8 @@ export function expectedTrainId(trainVersion) {
 }
 
 function explicitReleaseOrder(manifest) {
-  if (manifest?.releaseOrder !== undefined) {
-    return manifest.releaseOrder;
-  }
-  if (manifest?.release?.order !== undefined) {
-    return manifest.release.order;
+  if (manifest?.["release-order"] !== undefined) {
+    return manifest["release-order"];
   }
   return undefined;
 }
@@ -1360,8 +1346,8 @@ function releaseTrainArtifacts(manifest) {
   const components = isPlainObject(manifest?.components) ? manifest.components : {};
   return [
     ...objectValues(components.runtime?.binaries),
-    ...objectValues(components.studio?.desktopPackages),
-    ...objectValues(components.studio?.runtimeSidecars),
+    ...objectValues(components.studio?.["desktop-packages"]),
+    ...objectValues(components.studio?.["runtime-sidecars"]),
     components.studio?.["web-bundle"],
   ].filter(isPlainObject);
 }
@@ -1450,7 +1436,7 @@ function artifactSha256(artifact) {
 }
 
 function artifactLabel(artifact) {
-  return artifact.name ?? artifact.package ?? artifact.npmPackage ?? artifact.crate ?? artifact.url ?? artifact.href ?? artifact.tag ?? "download artifact";
+  return artifact.name ?? artifact.package ?? artifact.crate ?? artifact.url ?? artifact.href ?? artifact.tag ?? "download artifact";
 }
 
 function componentNameFromRegistryGate(gateName) {

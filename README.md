@@ -63,19 +63,19 @@ Abbreviated shape:
 ```jsonc
 {
   "schema": "skenion.release-train",
-  "schemaVersion": "0.1.0",
-  "trainId": "0.43",
-  "trainVersion": "0.43.0",
-  "protocolBaselines": {
+  "schema-version": "0.1.0",
+  "train-id": "0.43",
+  "train-version": "0.43.0",
+  "protocol-baselines": {
     "graph": "0.1",
     "project": "0.1",
     "node": "0.1",
     "extension": "0.1",
-    "runtimeHttp": "v0",
-    "runtimeCollaboration": "v0"
+    "runtime-http": "v0",
+    "runtime-collaboration": "v0"
   },
-  "capabilitySet": {
-    "protocolSurfaces": { "...": "matches protocolBaselines" },
+  "capability-set": {
+    "protocol-surfaces": { "...": "matches protocol-baselines" },
     "runtime": { "...": "runtime train capabilities" },
     "studio": { "...": "Studio train capabilities" },
     "marketplace": { "...": "marketplace train capabilities" },
@@ -91,7 +91,7 @@ Abbreviated shape:
         "aarch64-apple-darwin": {
           "id": "runtime-aarch64-apple-darwin",
           "target": "aarch64-apple-darwin",
-          "supportTier": "release-blocking",
+          "support-tier": "release-blocking",
           "kind": "runtime-binary",
           "name": "skenion-runtime-aarch64-apple-darwin.tar.gz",
           "version": "0.43.0",
@@ -99,11 +99,11 @@ Abbreviated shape:
             "kind": "github-release-asset",
             "repository": "skenion/skenion-runtime",
             "tag": "skenion-runtime-v0.43.0",
-            "assetName": "skenion-runtime-aarch64-apple-darwin.tar.gz",
+            "asset-name": "skenion-runtime-aarch64-apple-darwin.tar.gz",
             "url": null
           },
           "checksum": { "algorithm": "sha256", "value": null },
-          "sizeBytes": null
+          "size-bytes": null
         }
       }
     },
@@ -111,8 +111,8 @@ Abbreviated shape:
       "npm": { "ecosystem": "npm", "name": "@skenion/sdk", "version": "0.43.0", "url": null }
     },
     "studio": {
-      "desktopPackages": { "...": "target-keyed Studio package artifacts" },
-      "runtimeSidecars": { "...": "target-keyed Runtime sidecar artifacts" }
+      "desktop-packages": { "...": "target-keyed Studio package artifacts" },
+      "runtime-sidecars": { "...": "target-keyed Runtime sidecar artifacts" }
     },
     "examples": {
       "repository": "skenion/skenion-examples",
@@ -123,18 +123,18 @@ Abbreviated shape:
       "manual": {
         "version": "0.43.0",
         "path": "/manual/0.43/",
-        "pagesUrl": "https://skenion.github.io/skenion-docs/manual/0.43/"
+        "pages-url": "https://skenion.github.io/skenion-docs/manual/0.43/"
       }
     }
   },
-  "releaseGates": {
-    "registryPackages": { "...": "required registry package gates" },
-    "githubReleaseAssets": { "...": "Runtime and Studio release asset gates" },
-    "checksumVerification": { "...": "artifact id checksum gate" },
-    "runtimeSmoke": { "...": "target-keyed Runtime smoke gates" },
-    "studioPackageSmoke": { "...": "target-keyed Studio package smoke gates" },
-    "examplesConformance": { "...": "examples repository/tag/version gate" },
-    "docsPagesDeployment": { "...": "Manual Pages deployment gate" }
+  "release-gates": {
+    "registry-packages": { "...": "required registry package gates" },
+    "github-release-assets": { "...": "Runtime and Studio release asset gates" },
+    "checksum-verification": { "...": "artifact id checksum gate" },
+    "runtime-smoke": { "...": "target-keyed Runtime smoke gates" },
+    "studio-package-smoke": { "...": "target-keyed Studio package smoke gates" },
+    "examples-conformance": { "...": "examples repository/tag/version gate" },
+    "docs-pages-deployment": { "...": "Manual Pages deployment gate" }
   }
 }
 ```
@@ -146,24 +146,24 @@ release assets, tags, deployments, or workflow refs rather than npm/crates
 packages.
 
 The workflow derives release order as
-`contracts -> runtime -> sdk -> studio -> examples -> docs` when `releaseOrder`
-is omitted. If a caller includes `releaseOrder`, it must exactly match that
+`contracts -> runtime -> sdk -> studio -> examples -> docs` when `release-order`
+is omitted. If a caller includes `release-order`, it must exactly match that
 canonical order. Runtime targets are derived from `components.runtime.binaries`;
-Studio targets are derived from `components.studio.desktopPackages` and
-`components.studio.runtimeSidecars`.
+Studio targets are derived from `components.studio.desktop-packages` and
+`components.studio.runtime-sidecars`.
 
 For verification, the workflow derives registry, GitHub release asset, checksum,
-and Pages checks from `releaseGates`. Legacy `artifacts`, `releaseArtifacts`, or
-component-level artifact entries are still parsed when present. Supported
+and Pages checks from `release-gates`. Explicit `artifacts` entries are still
+parsed when present. Supported
 artifact types are `github-release`, `npm`, `crate`, `url`, `page`,
 `github-pages`, and `binary`. Unknown types fail closed until the library has
 explicit support for them. Every release artifact must include an explicit
-`version` or `trainVersion` matching the train. Downloadable `url` and `binary`
+`version` matching the train. Downloadable `url` and `binary`
 artifacts must include a `sha256` checksum. `page` and `github-pages` artifacts
 must include deployed version metadata and deployed status metadata. GitHub
-release assets listed in `releaseGates.checksumVerification.artifactIds` fail
+release assets listed in `release-gates.checksum-verification.artifact-ids` fail
 closed during artifact verification unless the manifest contains a concrete
-sha256 value or the release includes a `${assetName}.sha256` sidecar. Sidecars
+sha256 value or the release includes a `${asset-name}.sha256` sidecar. Sidecars
 may contain either `<hex>  <filename>` or just `<hex>`; the verifier hashes the
 downloaded asset bytes and compares them to the parsed digest.
 
@@ -220,7 +220,7 @@ Verifies already released artifacts described by the manifest. It checks
 registries, GitHub releases, URLs, Pages endpoints, and described checksums; it
 does not fetch sibling repository branches or treat `main` as a release source.
 For checksum-gated GitHub release assets whose manifest checksum is still null,
-this workflow requires an uploaded `${assetName}.sha256` release asset and
+this workflow requires an uploaded `<asset-name>.sha256` release asset and
 verifies the downloaded asset bytes against it.
 
 Inputs:
