@@ -13,7 +13,7 @@ import {
 
 const EXPECTED_SCHEMA = "skenion.compatibility-matrix";
 const EXPECTED_SCHEMA_VERSION = "0.1.0";
-const DEFAULT_OUT_DIR = ".skenion-train";
+const DEFAULT_OUT_DIR = ".skenion-compatibility";
 const DEFAULT_NPM_REGISTRY = "https://registry.npmjs.org";
 const DEFAULT_CRATES_REGISTRY = "https://crates.io";
 const USER_AGENT = "skenion-ci-compatibility-matrix/0.1 (+https://github.com/skenion/skenion-ci)";
@@ -27,13 +27,13 @@ try {
     process.exit(0);
   }
 
-  const matrixInput = args.matrix ?? args["matrix-json"] ?? args.manifest;
+  const matrixInput = args.matrix ?? args["matrix-json"];
   if (matrixInput === undefined || String(matrixInput).trim() === "") {
     throw new Error("Missing required argument --matrix.");
   }
 
   const outDir = args["out-dir"] ?? DEFAULT_OUT_DIR;
-  const matrixRoot = args["matrix-root"] ?? args["manifest-root"] ?? ".";
+  const matrixRoot = args["matrix-root"] ?? ".";
   const token = process.env.GH_TOKEN ?? "";
 
   ensureDir(outDir);

@@ -86,11 +86,6 @@ export function appendStepSummary(markdown) {
   fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${markdown.trimEnd()}\n\n`);
 }
 
-export function trainIdFromVersion(version) {
-  const match = String(version).match(/^(\d+\.\d+)\.\d+(?:[-+].*)?$/);
-  return match ? match[1] : "";
-}
-
 export function assertSemver(version, label = "version") {
   const text = String(version ?? "");
   if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(text)) {
