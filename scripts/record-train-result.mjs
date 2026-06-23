@@ -35,37 +35,37 @@ try {
   const manifestResult = tryReadManifest(manifestInput, manifestRoot, outDir);
   const header = manifestResult.manifest ? manifestHeader(manifestResult.manifest) : {};
   const components = manifestResult.manifest ? normalizeComponents(manifestResult.manifest) : [];
-  const trainId = header.trainId ?? trainIdFromVersion(trainVersion);
+  const trainId = header["train-id"] ?? trainIdFromVersion(trainVersion);
 
   const result = {
     schema: "skenion.release-train-result.v1",
     name: "skenion Release Train Result",
     version: 1,
-    trainId,
-    trainVersion,
+    "train-id": trainId,
+    "train-version": trainVersion,
     mode,
     status,
     summary: summaryInput,
     manifest: {
       source: manifestResult.label,
-      normalizedPath: manifestResult.normalizedPath,
+      "normalized-path": manifestResult.normalizedPath,
       error: manifestResult.error,
       schema: header.schema ?? null,
-      trainId: header.trainId ?? null,
-      trainVersion: header.trainVersion ?? null,
-      componentCount: components.length,
-      releaseOrder: manifestResult.manifest ? releaseOrder(manifestResult.manifest) : [],
+      "train-id": header["train-id"] ?? null,
+      "train-version": header["train-version"] ?? null,
+      "component-count": components.length,
+      "release-order": manifestResult.manifest ? releaseOrder(manifestResult.manifest) : [],
     },
     github: {
       repository: process.env.GITHUB_REPOSITORY ?? "",
       workflow: process.env.GITHUB_WORKFLOW ?? "",
-      runId: process.env.GITHUB_RUN_ID ?? "",
-      runAttempt: process.env.GITHUB_RUN_ATTEMPT ?? "",
+      "run-id": process.env.GITHUB_RUN_ID ?? "",
+      "run-attempt": process.env.GITHUB_RUN_ATTEMPT ?? "",
       sha: process.env.GITHUB_SHA ?? "",
       ref: process.env.GITHUB_REF ?? "",
       actor: process.env.GITHUB_ACTOR ?? "",
     },
-    recordedAt: new Date().toISOString(),
+    "recorded-at": new Date().toISOString(),
   };
 
   const artifactName = `skenion-train-${trainVersion}-${mode}-${status}`;
@@ -114,12 +114,12 @@ function renderSummary(result) {
   return [
     "## skenion Train Result",
     "",
-    `- Train: ${result.trainId} (${result.trainVersion})`,
+    `- Train: ${result["train-id"]} (${result["train-version"]})`,
     `- Mode: ${result.mode}`,
     `- Status: ${result.status}`,
-    `- Components: ${result.manifest.componentCount}`,
-    `- Release order: ${result.manifest.releaseOrder.join(" -> ") || "(unavailable)"}`,
-    `- Run: ${result.github.repository}#${result.github.runId}`,
+    `- Components: ${result.manifest["component-count"]}`,
+    `- Release order: ${result.manifest["release-order"].join(" -> ") || "(unavailable)"}`,
+    `- Run: ${result.github.repository}#${result.github["run-id"]}`,
     ...(result.summary ? [`- Summary: ${result.summary}`] : []),
     ...(result.manifest.error ? [`- Manifest warning: ${result.manifest.error}`] : []),
     "",
