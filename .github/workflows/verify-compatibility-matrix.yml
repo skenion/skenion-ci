@@ -1,0 +1,92 @@
+name: Verify compatibility matrix
+
+on:
+  workflow_call:
+    inputs:
+      matrix:
+        description: Path to a compatibility matrix JSON file in the caller repository, or an inline JSON string.
+        required: true
+        type: string
+      manifest-ref:
+        description: Optional caller repository ref to check out when matrix is a path.
+        required: false
+        default: ""
+        type: string
+      manifest-root:
+        description: Checkout path used as the matrix root for path inputs.
+        required: false
+        default: .caller
+        type: string
+      out-dir:
+        description: Directory for the normalized matrix, JSON report, and Markdown summary.
+        required: false
+        default: .skenion-train
+        type: string
+    secrets:
+      GH_TOKEN:
+        description: Token for GitHub release API and release asset checksum verification when Runtime or Studio artifacts are listed.
+        required: false
+    outputs:
+      status:
+        description: Compatibility matrix verification status.
+        value: ${{ jobs.verify.outputs.status }}
+      verified-count:
+        description: Number of checks that passed.
+        value: ${{ jobs.verify.outputs['verified-count'] }}
+      failure-count:
+        description: Number of checks that failed.
+        value: ${{ jobs.verify.outputs['failure-count'] }}
+      report-path:
+        description: Path to the structured JSON verification report.
+        value: ${{ jobs.verify.outputs['report-path'] }}
+      summary-path:
+        description: Path to the Markdown verification summary.
+        value: ${{ jobs.verify.outputs['summary-path'] }}
+      summary:
+        description: One-line compatibility matrix verification summary.
+        value: ${{ jobs.verify.outputs.summary }}
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify compatibility matrix
+    runs-on: ubuntu-latest
+    outputs:
+      status: ${{ steps.verify.outputs.status }}
+      verified-count: ${{ steps.verify.outputs['verified-count'] }}
+      failure-count: ${{ steps.verify.outputs['failure-count'] }}
+      report-path: ${{ steps.verify.outputs['report-path'] }}
+      summary-path: ${{ steps.verify.outputs['summary-path'] }}
+      summary: ${{ steps.verify.outputs.summary }}
+    steps:
+      - name: Checkout workflow library
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .skenion-ci
+          persist-credentials: false
+
+      - name: Checkout matrix repository
+        if: ${{ !startsWith(inputs.matrix, '{') && !startsWith(inputs.matrix, '[') }}
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.manifest-ref || github.sha }}
+          path: ${{ inputs.manifest-root }}
+          persist-credentials: false
+
+      - name: Verify compatibility matrix
+        id: verify
+        shell: bash
+        run: >-
+          node .skenion-ci/scripts/verify-compatibility-matrix.mjs
+          --matrix "${MATRIX}"
+          --matrix-root "${MATRIX_ROOT}"
+          --out-dir "${OUT_DIR}"
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          MATRIX: ${{ inputs.matrix }}
+          MATRIX_ROOT: ${{ inputs.manifest-root }}
+          OUT_DIR: ${{ inputs.out-dir }}

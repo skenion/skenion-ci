@@ -1,128 +1,68 @@
-name: Dispatch Release Please
+name: Deprecated Release Please dispatch
 
 on:
   workflow_call:
     inputs:
       target-repo:
-        description: Repository to dispatch, in owner/repo form.
-        required: true
+        description: Deprecated legacy input. Component Release Please dispatch has been removed.
+        required: false
+        default: ""
         type: string
       train-version:
-        description: Explicit lockstep release-as version, for example 0.43.0.
-        required: true
+        description: Deprecated legacy input. Component Release Please dispatch has been removed.
+        required: false
+        default: ""
         type: string
       component:
-        description: Release train component row to dispatch, such as contracts, runtime, sdk, or studio.
-        required: true
+        description: Deprecated legacy input. Component Release Please dispatch has been removed.
+        required: false
+        default: ""
         type: string
       manifest:
-        description: Checked-in conductor manifest path or inline JSON that owns this dispatch.
-        required: true
+        description: Deprecated legacy input. Component Release Please dispatch has been removed.
+        required: false
+        default: ""
         type: string
       manifest-ref:
-        description: Conductor repository ref that contains the manifest.
+        description: Deprecated legacy input. Component Release Please dispatch has been removed.
         required: false
         default: ""
         type: string
       expected-source-commit:
-        description: Expected target repository source commit for this component row.
-        required: true
+        description: Deprecated legacy input. Component Release Please dispatch has been removed.
+        required: false
+        default: ""
         type: string
       mode:
-        description: Release train phase. Only publish can mutate.
+        description: Deprecated legacy input. Component Release Please dispatch has been removed.
         required: false
-        default: prepare
+        default: ""
         type: string
       dry-run:
-        description: Echo the planned dispatch without mutating the target repository.
+        description: Deprecated legacy input. Component Release Please dispatch has been removed.
         required: false
         default: true
         type: boolean
       workflow-file:
-        description: Target Release Please workflow file name.
-        required: false
-        default: release-please.yml
-        type: string
-      target-ref:
-        description: Optional target repository ref. Empty publish runs resolve the default branch through the GitHub API.
+        description: Deprecated legacy input. Component Release Please dispatch has been removed.
         required: false
         default: ""
         type: string
-    secrets:
-      SKENION_RELEASE_TRAIN_TOKEN:
-        description: Cross-repository release train token.
-        required: true
-    outputs:
-      target-repo:
-        description: Repository that was planned or dispatched.
-        value: ${{ jobs.dispatch.outputs['target-repo'] }}
       target-ref:
-        description: Ref used in the workflow dispatch payload.
-        value: ${{ jobs.dispatch.outputs['target-ref'] }}
-      mutated:
-        description: true when the workflow dispatch API was called.
-        value: ${{ jobs.dispatch.outputs.mutated }}
-      dispatch-payload:
-        description: Path to the structured dispatch payload artifact source.
-        value: ${{ jobs.dispatch.outputs['dispatch-payload'] }}
-
+        description: Deprecated legacy input. Component Release Please dispatch has been removed.
+        required: false
+        default: ""
+        type: string
 permissions:
   contents: read
-  actions: write
 
 jobs:
-  dispatch:
-    name: Dispatch Release Please
+  removed:
+    name: Release Please dispatch removed
     runs-on: ubuntu-latest
-    outputs:
-      target-repo: ${{ steps.dispatch.outputs['target-repo'] }}
-      target-ref: ${{ steps.dispatch.outputs['target-ref'] }}
-      mutated: ${{ steps.dispatch.outputs.mutated }}
-      dispatch-payload: ${{ steps.dispatch.outputs['dispatch-payload'] }}
     steps:
-      - name: Checkout workflow library
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ job.workflow_repository }}
-          ref: ${{ job.workflow_sha }}
-          path: .skenion-ci
-          persist-credentials: false
-
-      - name: Checkout manifest repository
-        if: ${{ !startsWith(inputs.manifest, '{') && !startsWith(inputs.manifest, '[') }}
-        uses: actions/checkout@v4
-        with:
-          repository: skenion/skenion
-          ref: ${{ inputs.manifest-ref || github.sha }}
-          path: .caller
-          persist-credentials: false
-
-      - name: Dispatch Release Please workflow
-        id: dispatch
+      - name: Fail closed
         shell: bash
-        run: >-
-          node .skenion-ci/scripts/dispatch-release-please.mjs
-          --target-repo "${TARGET_REPO}"
-          --train-version "${TRAIN_VERSION}"
-          --component "${COMPONENT}"
-          --manifest "${MANIFEST}"
-          --manifest-root .caller
-          --manifest-ref "${MANIFEST_REF}"
-          --expected-source-commit "${EXPECTED_SOURCE_COMMIT}"
-          --mode "${MODE}"
-          --dry-run "${DRY_RUN}"
-          --workflow-file "${WORKFLOW_FILE}"
-          --target-ref "${TARGET_REF}"
-          --out-dir .skenion-train
-        env:
-          GH_TOKEN: ${{ secrets.SKENION_RELEASE_TRAIN_TOKEN }}
-          TARGET_REPO: ${{ inputs.target-repo }}
-          TRAIN_VERSION: ${{ inputs.train-version }}
-          COMPONENT: ${{ inputs.component }}
-          MANIFEST: ${{ inputs.manifest }}
-          MANIFEST_REF: ${{ inputs.manifest-ref }}
-          EXPECTED_SOURCE_COMMIT: ${{ inputs.expected-source-commit }}
-          MODE: ${{ inputs.mode }}
-          DRY_RUN: ${{ inputs.dry-run }}
-          WORKFLOW_FILE: ${{ inputs.workflow-file }}
-          TARGET_REF: ${{ inputs.target-ref }}
+        run: |
+          echo "::error title=Release Please dispatch removed::skenion-ci no longer dispatches component Release Please workflows from main. Component repositories own Release Please. Use verify-compatibility-matrix.yml for promotion evidence."
+          exit 1

@@ -1,329 +1,131 @@
 # skenion CI
 
-Reusable GitHub Actions workflows for skenion repositories.
+Reusable GitHub Actions workflows for skenion release verification.
 
-`skenion/skenion` is the release train conductor: it owns product train
-sequencing, manifests, compatibility decisions, and final release reporting.
-`skenion/skenion-ci` is the reusable workflow library that the conductor
-invokes from pinned workflow calls such as:
+`skenion/skenion-ci` is a workflow library for compatibility matrix validation
+and promotion evidence. It is not the release train conductor and does not
+dispatch component Release Please workflows from `main`. Component repositories
+own their own Release Please, tag, release, package, and artifact workflows.
 
-```yaml
-uses: skenion/skenion-ci/.github/workflows/validate-train-manifest.yml@v1
-```
+Publishing remains GitHub Actions only. This repository verifies already
+declared evidence; it must not publish npm packages, crates, GitHub releases, or
+desktop artifacts from local machines or from the compatibility verifier.
 
-The reusable workflows check out helper scripts from the exact workflow commit
-SHA that GitHub resolved for the pinned call. Callers cannot override the helper
-script ref separately from the reusable workflow ref.
+## Compatibility Matrix Verification
 
-Publishing remains GitHub Actions only. These workflows may validate, dispatch,
-verify, and record release trains, but they must not be replaced by local
-registry publishing from a developer machine.
-
-## Required Token
-
-Callers should provide `SKENION_RELEASE_TRAIN_TOKEN` to workflows that dispatch
-or verify cross-repository release artifacts:
+Use the v2 verifier from a caller repository with either a checked-in matrix
+path or inline JSON:
 
 ```yaml
-secrets:
-  SKENION_RELEASE_TRAIN_TOKEN: ${{ secrets.SKENION_RELEASE_TRAIN_TOKEN }}
+jobs:
+  verify:
+    uses: skenion/skenion-ci/.github/workflows/verify-compatibility-matrix.yml@v2
+    with:
+      matrix: .skenion/compatibility/0.45.json
+      manifest-ref: ${{ github.sha }}
+    secrets:
+      GH_TOKEN: ${{ secrets.GH_TOKEN }}
 ```
 
-The token must be able to dispatch workflows across skenion repositories and
-read or write pull requests, releases, Actions runs, artifacts, and repository
-contents as required by the calling train phase. For GitHub fine-grained tokens,
-grant only the repositories in the release train and the minimum matching
-permissions. For classic tokens, the release conductor generally needs workflow
-dispatch capability plus repository read/write scopes appropriate to Release
-Please and release artifact inspection.
+Callers should pin reusable workflow refs, such as `@v2`. The `main` branch is
+for development only.
 
-## Modes
+`GH_TOKEN` is required only when the matrix lists Runtime or Studio GitHub
+release assets. The verifier uses it to read GitHub Releases and download
+release assets for checksum verification. Registry and local shape checks do
+not require GitHub API credentials.
 
-- `prepare`: dry-run friendly planning and structural validation. Workflows
-  should echo intended work and avoid mutations.
-- `publish`: the only mode that may mutate release state. Dispatch still
-  requires `dry-run: false` in `dispatch-release-please.yml`.
-- `verify`: inspect already published registry packages, GitHub releases, Pages
-  URLs, and checksums described by the manifest. Verification must not check out
-  sibling branches or `main` as release authority.
+The workflow writes a normalized matrix, a JSON report, and a Markdown summary
+under the configured `out-dir` (default `.skenion-train`) and exposes these
+outputs:
 
-## Release Authority
+- `status`
+- `verified-count`
+- `failure-count`
+- `report-path`
+- `summary-path`
+- `summary`
 
-The checked-in train manifest in `skenion/skenion` plus the hub conductor
-workflow is the product train authority. `skenion-ci` only supplies reusable
-mechanics. Release Please may prepare release PRs, but it must not
-independently own product train tags, GitHub releases, artifact uploads,
-registry package publication, or Manual promotion.
+## Matrix Requirements
 
-Manifests must include `release-authority` with this state order:
+The v2 verifier is scoped to the corrected M06.9 compatibility model. A matrix
+must use:
 
-```text
-prepared_pr -> merged_release_commit -> tag_exists -> github_release_exists -> artifacts_uploaded -> registry_package_exists -> docs_deployed -> verified
-```
-
-Repository release workflows should reject publish steps that are not
-conductor-dispatched with an explicit component, manifest row, manifest ref, and
-expected source commit. The reusable dispatch workflow now forwards that
-context to target Release Please workflows; target repositories must add
-matching `workflow_dispatch` inputs before publish mode can be considered
-release-complete.
-
-For publish dispatch, `contracts`, `runtime`, `sdk`, and `studio` manifest rows
-must include `expected-source-commit` as a full 40-character Git commit SHA. The
-reusable dispatch script validates that the requested component maps to the
-canonical repository for that row and that the provided expected source commit
-matches the manifest before it can mutate a target repository.
-
-Authority state is monotonic: a later state cannot be `passed` or `waived` while
-an earlier state is `pending` or `failed`. Any `waived` authority state requires
-`release-authority.waivers.<state>` with `reason`, `approved-by`, and
-`approved-at`. `verified: passed` requires every required release gate to be
-`passed` or explicitly `waived`.
-
-## Train Manifest Shape
-
-The manifest is JSON. Inputs may pass either a path in the caller repository or
-an inline JSON string.
-
-The canonical shape is the Contracts v0.1 release-train manifest, defined in
-`skenion-contracts` at
-`json-schema/release-train/v0.1/release-train.schema.json`. Use the Contracts
-fixture `fixtures/release-train/v0.1/valid/0.43.0.release-train.json` or the
-conductor manifest in `skenion/skenion` as the complete example.
-
-Abbreviated shape:
-
-```jsonc
+```json
 {
-  "schema": "skenion.release-train",
+  "schema": "skenion.compatibility-matrix",
   "schema-version": "0.1.0",
-  "train-id": "0.43",
-  "train-version": "0.43.0",
-  "release-authority": {
-    "model": "hub-conductor-manifest",
-    "owner-repository": "skenion/skenion",
-    "conductor-workflow": ".github/workflows/release-train.yml",
-    "release-please": {
-      "role": "prepare-release-pr",
-      "independent-train-authority": false,
-      "may-publish-tags": false,
-      "may-publish-github-releases": false,
-      "may-publish-artifacts": false,
-      "may-publish-registry-packages": false
-    },
-    "repository-workflows": {
-      "require-conductor-dispatch": true,
-      "require-manifest-row": true,
-      "require-expected-source-commit": true
-    },
-    "state-order": ["prepared_pr", "...", "verified"],
-    "state": { "prepared_pr": "pending", "...": "pending" }
-  },
-  "protocol-baselines": {
-    "graph": "0.1",
-    "project": "0.1",
-    "node": "0.1",
-    "extension": "0.1",
-    "runtime-http": "v0",
-    "runtime-collaboration": "v0"
-  },
-  "capability-set": {
-    "protocol-surfaces": { "...": "matches protocol-baselines" },
-    "runtime": { "...": "runtime train capabilities" },
-    "studio": { "...": "Studio train capabilities" },
-    "marketplace": { "...": "marketplace train capabilities" },
-    "manual": { "...": "Manual train capabilities" }
-  },
-  "components": {
-    "contracts": {
-      "npm": { "ecosystem": "npm", "name": "@skenion/contracts", "version": "0.43.0", "url": null },
-      "crate": { "ecosystem": "crates.io", "name": "skenion-contracts", "version": "0.43.0", "url": null }
-    },
-    "runtime": {
-      "binaries": {
-        "aarch64-apple-darwin": {
-          "id": "runtime-aarch64-apple-darwin",
-          "target": "aarch64-apple-darwin",
-          "support-tier": "release-blocking",
-          "kind": "runtime-binary",
-          "name": "skenion-runtime-aarch64-apple-darwin.tar.gz",
-          "version": "0.43.0",
-          "source": {
-            "kind": "github-release-asset",
-            "repository": "skenion/skenion-runtime",
-            "tag": "skenion-runtime-v0.43.0",
-            "asset-name": "skenion-runtime-aarch64-apple-darwin.tar.gz",
-            "url": null
-          },
-          "checksum": { "algorithm": "sha256", "value": null },
-          "size-bytes": null
-        }
-      }
-    },
-    "sdk": {
-      "npm": { "ecosystem": "npm", "name": "@skenion/sdk", "version": "0.43.0", "url": null }
-    },
-    "studio": {
-      "desktop-packages": { "...": "target-keyed Studio package artifacts" },
-      "runtime-sidecars": { "...": "target-keyed Runtime sidecar artifacts" }
-    },
-    "examples": {
-      "repository": "skenion/skenion-examples",
-      "version": "0.43.0",
-      "tag": "skenion-examples-v0.43.0"
-    },
-    "docs": {
-      "manual": {
-        "version": "0.43.0",
-        "path": "/manual/0.43/",
-        "pages-url": "https://skenion.github.io/skenion-docs/manual/0.43/"
-      }
-    }
-  },
-  "release-gates": {
-    "registry-packages": { "...": "required registry package gates" },
-    "github-release-assets": { "...": "Runtime and Studio release asset gates" },
-    "checksum-verification": { "...": "artifact id checksum gate" },
-    "preview-checksum-verification": { "...": "non-required preview artifact checksum gate" },
-    "runtime-smoke": { "...": "target-keyed Runtime smoke gates" },
-    "studio-package-smoke": { "...": "target-keyed Studio package smoke gates" },
-    "examples-conformance": { "...": "examples repository/tag/version gate" },
-    "docs-pages-deployment": { "...": "Manual Pages deployment gate" }
-  }
+  "contracts-line": "0.45",
+  "contracts-range": ">=0.45.0 <0.46.0"
 }
 ```
 
-The registry package surface is intentionally limited to importable libraries:
-`@skenion/contracts`, `skenion-contracts`, and `@skenion/sdk`. Runtime binaries,
-Studio web/desktop builds, examples, Manual pages, and this CI library are
-release assets, tags, deployments, or workflow refs rather than npm/crates
-packages.
+Contracts package and crate versions must stay inside the declared v0 Contracts
+line. For example, line `0.45` means `>=0.45.0 <0.46.0`. If an SDK package is
+listed, it must declare the same supported Contracts range.
 
-The workflow derives release order as
-`contracts -> runtime -> sdk -> studio -> examples -> docs` when `release-order`
-is omitted. If a caller includes `release-order`, it must exactly match that
-canonical order. Runtime targets are derived from `components.runtime.binaries`;
-Studio targets are derived from `components.studio.desktop-packages` and
-`components.studio.runtime-sidecars`.
+The verifier checks:
 
-For verification, the workflow derives registry, GitHub release asset, checksum,
-and Pages checks from `release-gates`. Explicit `artifacts` entries are still
-parsed when present. Supported
-artifact types are `github-release`, `npm`, `crate`, `url`, `page`,
-`github-pages`, and `binary`. Unknown types fail closed until the library has
-explicit support for them. Every release artifact must include an explicit
-`version` matching the train. Downloadable `url` and `binary`
-artifacts must include a `sha256` checksum. `page` and `github-pages` artifacts
-must include deployed version metadata and deployed status metadata. GitHub
-release assets listed in `release-gates.checksum-verification.artifact-ids` fail
-closed during artifact verification unless the manifest contains a concrete
-sha256 value or the release includes a `${asset-name}.sha256` sidecar. Sidecars
-may contain either `<hex>  <filename>` or just `<hex>`; the verifier hashes the
-downloaded asset bytes and compares them to the parsed digest.
+- `components.contracts.npm` exists on npm as `@skenion/contracts`.
+- `components.contracts.crate` or `components.contracts.crate-package` exists
+  on crates.io as `skenion-contracts`.
+- `components.sdk.npm` exists on npm as `@skenion/sdk` when listed.
+- Runtime and Studio GitHub release assets exist when listed, and their
+  downloaded bytes match the declared sha256 checksum.
+- Promoted matrices have passed examples conformance evidence.
+- Promoted matrices mark Manual Pages as deployed and promoted.
 
-Required release, checksum, and smoke gates may reference only
-`support-tier: "release-blocking"` artifacts. Preview target evidence belongs in
-non-required gates, such as `github-release-assets.runtime-preview`,
-`github-release-assets.studio-preview`, `preview-checksum-verification`, or
-target smoke rows with `required: false`.
+## Workflow Inputs
 
-## Workflows
-
-### `validate-train-manifest.yml`
-
-Validates manifest invariants without checking out sibling repositories.
+### `verify-compatibility-matrix.yml`
 
 Inputs:
 
-- `manifest` (required): caller repository path or inline JSON string.
-- `manifest-ref`: optional caller repository ref for path manifests.
-- `train-version` (required): expected lockstep version, such as `0.43.0`.
-- `mode`: `prepare`, `publish`, or `verify`; default `prepare`.
-
-Outputs:
-
-- `train-version`
-- `train-id`
-- `manifest-path`
-- `summary`
-
-### `dispatch-release-please.yml`
-
-Dispatches a target repository Release Please workflow with an explicit
-`release-as` input. It does not allow independent per-repository Release Please
-version authority.
-
-Inputs:
-
-- `target-repo` (required): `owner/repo`.
-- `train-version` (required): explicit `release-as` version.
-- `component` (required): train component row being dispatched.
-- `manifest` (required): checked-in conductor manifest path or inline JSON.
-- `manifest-ref`: conductor repository ref containing the manifest.
-- `expected-source-commit`: target repository source commit expected for this
-  component row. Required and validated for publish dispatches.
-- `mode`: default `prepare`; only `publish` can mutate.
-- `dry-run`: default `true`; must be `false` for mutation.
-- `workflow-file`: default `release-please.yml`.
-- `target-ref`: optional dispatch ref. Empty publish calls resolve the target
-  default branch through the GitHub API.
+- `matrix` (required): path to a compatibility matrix JSON file in the caller
+  repository, or an inline JSON string.
+- `manifest-ref`: optional caller repository ref for path matrices.
+- `manifest-root`: checkout path used as the matrix root; default `.caller`.
+- `out-dir`: output directory for reports; default `.skenion-train`.
 
 Secret:
 
-- `SKENION_RELEASE_TRAIN_TOKEN`
+- `GH_TOKEN`: optional unless Runtime or Studio GitHub release artifacts are
+  listed.
 
 Outputs:
 
-- `target-repo`
-- `target-ref`
-- `mutated`
-- `dispatch-payload`
-
-### `verify-release-artifacts.yml`
-
-Verifies already released artifacts described by the manifest. It checks
-registries, GitHub releases, URLs, Pages endpoints, and described checksums; it
-does not fetch sibling repository branches or treat `main` as a release source.
-For checksum-gated GitHub release assets whose manifest checksum is still null,
-this workflow requires an uploaded `<asset-name>.sha256` release asset and
-verifies the downloaded asset bytes against it.
-
-Inputs:
-
-- `manifest` (required): caller repository path or inline JSON string.
-- `manifest-ref`: optional caller repository ref for path manifests.
-- `train-version` (required): expected lockstep version.
-
-Secret:
-
-- `SKENION_RELEASE_TRAIN_TOKEN`
-
-Outputs:
-
+- `status`
 - `verified-count`
+- `failure-count`
 - `report-path`
+- `summary-path`
 - `summary`
 
-### `record-train-result.yml`
+## Deprecated v1 Workflows
 
-Writes a structured train result JSON file, writes a Markdown summary, appends
-the GitHub step summary, and uploads the files as a workflow artifact.
+The old train-manifest workflows remain in the repository as historical v1
+validation helpers, but they are not the main release model. `v1` tag users can
+continue to pin historical behavior. On `main`,
+`dispatch-release-please.yml` fails closed with a removal message; component
+repositories own Release Please.
 
-Inputs:
+`verify-release-artifacts.yml` is a deprecated v1 artifact verifier. On `main`
+it accepts caller-provided `GH_TOKEN` only for GitHub release and asset reads.
 
-- `manifest` (required): caller repository path or inline JSON string.
-- `manifest-ref`: optional caller repository ref for path manifests.
-- `train-version` (required): expected lockstep version.
-- `mode`: `prepare`, `publish`, or `verify`; default `prepare`.
-- `status` (required): `success`, `failure`, `cancelled`, `skipped`, or
-  `neutral`.
-- `summary`: optional human-readable result note.
+Existing v1 train validation scripts are isolated from the v2 compatibility
+matrix path and should not be extended for new M06.9 promotion work.
 
-Outputs:
+## Local Validation
 
-- `result-path`
-- `summary-path`
-- `artifact-name`
+Run the verifier self-check locally:
+
+```sh
+node scripts/verify-compatibility-matrix.mjs --self-check
+```
+
+The self-check covers a valid matrix, a bad SDK Contracts range, a missing
+Runtime release asset, a checksum mismatch, and a promoted matrix whose Manual
+is not promoted.
 
 ## License And Credit
 

@@ -29,7 +29,7 @@ try {
   const expectedVersion = requireArg(args, "train-version");
   const outDir = args["out-dir"] ?? ".skenion-train";
   const manifestRoot = args["manifest-root"] ?? ".";
-  const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN || "";
+  const token = process.env.GH_TOKEN || "";
 
   assertSemver(expectedVersion, "train version");
   ensureDir(outDir);
