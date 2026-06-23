@@ -13,6 +13,7 @@ import {
 } from "./lib/github-actions.mjs";
 import {
   readManifestSource,
+  releaseAuthorityState,
   validateTrainManifestInvariants,
 } from "./lib/manifest.mjs";
 
@@ -48,6 +49,7 @@ try {
     "runtime-targets": targets,
     "studio-desktop-targets": studioTargets["desktop-packages"],
     "studio-runtime-sidecar-targets": studioTargets["runtime-sidecars"],
+    "release-authority-state": releaseAuthorityState(manifest),
     "manifest-source": loaded.label,
     "normalized-manifest-path": loaded.normalizedPath,
     warnings,
@@ -91,9 +93,16 @@ function renderSummary(summary, errors) {
     `- Runtime targets: ${summary["runtime-targets"].join(", ") || "(missing)"}`,
     `- Studio desktop targets: ${summary["studio-desktop-targets"].join(", ") || "(missing)"}`,
     `- Studio runtime sidecar targets: ${summary["studio-runtime-sidecar-targets"].join(", ") || "(missing)"}`,
+    `- Release authority state: ${renderAuthorityState(summary["release-authority-state"])}`,
     `- Normalized manifest: ${summary["normalized-manifest-path"]}`,
     ...summary.warnings.map((warning) => `- Warning: ${warning}`),
     ...(errors.length === 0 ? [] : ["", "### Errors", "", ...errors.map((error) => `- ${error}`)]),
     "",
   ].join("\n");
+}
+
+function renderAuthorityState(state) {
+  return Object.entries(state)
+    .map(([name, status]) => `${name}=${status ?? "(missing)"}`)
+    .join(", ") || "(missing)";
 }

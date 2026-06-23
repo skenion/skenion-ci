@@ -12,11 +12,21 @@ import {
   writeJson,
   writeText,
 } from "./lib/github-actions.mjs";
+import {
+  releaseDispatchContext,
+  readManifestSource,
+  validateTrainManifestInvariants,
+} from "./lib/manifest.mjs";
 
 try {
   const args = parseArgs();
   const targetRepo = requireArg(args, "target-repo");
   const trainVersion = requireArg(args, "train-version");
+  const component = normalizeComponent(requireArg(args, "component"));
+  const manifest = requireArg(args, "manifest");
+  const manifestRoot = args["manifest-root"] ?? ".";
+  const manifestRef = String(args["manifest-ref"] ?? "").trim();
+  const expectedSourceCommit = String(args["expected-source-commit"] ?? "").trim();
   const mode = normalizeMode(args.mode);
   const dryRun = boolValue(args["dry-run"] ?? "true");
   const workflowFile = normalizeWorkflowFile(args["workflow-file"] ?? "release-please.yml");
@@ -26,6 +36,22 @@ try {
   assertSemver(trainVersion, "train version");
   ensureDir(outDir);
   validateRepo(targetRepo);
+
+  const loadedManifest = readManifestSource(manifest, { manifestRoot, outDir });
+  const manifestValidation = validateTrainManifestInvariants(loadedManifest.manifest, trainVersion);
+  if (manifestValidation.errors.length > 0) {
+    throw new Error(`Manifest validation failed before dispatch: ${manifestValidation.errors.join("; ")}`);
+  }
+
+  const context = releaseDispatchContext(loadedManifest.manifest, {
+    component,
+    targetRepo,
+    expectedSourceCommit,
+    requireExpectedSourceCommit: mode === "publish",
+  });
+  if (context.errors.length > 0) {
+    throw new Error(`Release dispatch context is invalid: ${context.errors.join("; ")}`);
+  }
 
   const mutates = mode === "publish" && !dryRun;
   if (mutates && !token) {
@@ -39,11 +65,21 @@ try {
       "release-as": trainVersion,
       "train-version": trainVersion,
       "release-train-mode": mode,
+      "release-train-component": component,
+      "release-train-manifest": manifest,
+      "release-train-manifest-ref": manifestRef,
+      "expected-source-commit": expectedSourceCommit,
     },
   };
 
   const dispatch = {
     targetRepo,
+    component,
+    manifest,
+    manifestRef,
+    expectedSourceCommit,
+    manifestComponentRepository: context.repository,
+    manifestExpectedSourceCommit: context.expectedSourceCommit,
     workflowFile,
     trainVersion,
     mode,
@@ -83,6 +119,15 @@ function validateRepo(value) {
   if (!/^[^/\s]+\/[^/\s]+$/.test(value)) {
     throw new Error(`target-repo must be in owner/repo form, got "${value}".`);
   }
+}
+
+function normalizeComponent(value) {
+  const component = String(value).trim();
+  const allowed = new Set(["contracts", "runtime", "sdk", "studio", "examples", "docs"]);
+  if (!allowed.has(component)) {
+    throw new Error(`component must be one of ${[...allowed].join(", ")}, got "${value}".`);
+  }
+  return component;
 }
 
 async function resolveDefaultBranch(repo, token) {
@@ -136,11 +181,17 @@ function renderSummary(dispatch) {
     "## Release Please Dispatch",
     "",
     `- Target repository: ${dispatch.targetRepo}`,
+    `- Component: ${dispatch.component}`,
     `- Workflow: ${dispatch.workflowFile}`,
     `- Mode: ${dispatch.mode}`,
     `- Dry run: ${dispatch.dryRun}`,
     `- Mutated: ${dispatch.mutates}`,
     `- Ref: ${dispatch.payload.ref}`,
+    `- Manifest: ${dispatch.manifest}`,
+    `- Manifest ref: ${dispatch.manifestRef || "(not provided)"}`,
+    `- Expected source commit: ${dispatch.expectedSourceCommit || "(not provided)"}`,
+    `- Manifest component repository: ${dispatch.manifestComponentRepository}`,
+    `- Manifest component source commit: ${dispatch.manifestExpectedSourceCommit}`,
     `- release-as: ${dispatch.payload.inputs["release-as"]}`,
     "",
   ].join("\n");

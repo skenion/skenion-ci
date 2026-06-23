@@ -47,6 +47,39 @@ Please and release artifact inspection.
   URLs, and checksums described by the manifest. Verification must not check out
   sibling branches or `main` as release authority.
 
+## Release Authority
+
+The checked-in train manifest in `skenion/skenion` plus the hub conductor
+workflow is the product train authority. `skenion-ci` only supplies reusable
+mechanics. Release Please may prepare release PRs, but it must not
+independently own product train tags, GitHub releases, artifact uploads,
+registry package publication, or Manual promotion.
+
+Manifests must include `release-authority` with this state order:
+
+```text
+prepared_pr -> merged_release_commit -> tag_exists -> github_release_exists -> artifacts_uploaded -> registry_package_exists -> docs_deployed -> verified
+```
+
+Repository release workflows should reject publish steps that are not
+conductor-dispatched with an explicit component, manifest row, manifest ref, and
+expected source commit. The reusable dispatch workflow now forwards that
+context to target Release Please workflows; target repositories must add
+matching `workflow_dispatch` inputs before publish mode can be considered
+release-complete.
+
+For publish dispatch, `contracts`, `runtime`, `sdk`, and `studio` manifest rows
+must include `expected-source-commit` as a full 40-character Git commit SHA. The
+reusable dispatch script validates that the requested component maps to the
+canonical repository for that row and that the provided expected source commit
+matches the manifest before it can mutate a target repository.
+
+Authority state is monotonic: a later state cannot be `passed` or `waived` while
+an earlier state is `pending` or `failed`. Any `waived` authority state requires
+`release-authority.waivers.<state>` with `reason`, `approved-by`, and
+`approved-at`. `verified: passed` requires every required release gate to be
+`passed` or explicitly `waived`.
+
 ## Train Manifest Shape
 
 The manifest is JSON. Inputs may pass either a path in the caller repository or
@@ -66,6 +99,26 @@ Abbreviated shape:
   "schema-version": "0.1.0",
   "train-id": "0.43",
   "train-version": "0.43.0",
+  "release-authority": {
+    "model": "hub-conductor-manifest",
+    "owner-repository": "skenion/skenion",
+    "conductor-workflow": ".github/workflows/release-train.yml",
+    "release-please": {
+      "role": "prepare-release-pr",
+      "independent-train-authority": false,
+      "may-publish-tags": false,
+      "may-publish-github-releases": false,
+      "may-publish-artifacts": false,
+      "may-publish-registry-packages": false
+    },
+    "repository-workflows": {
+      "require-conductor-dispatch": true,
+      "require-manifest-row": true,
+      "require-expected-source-commit": true
+    },
+    "state-order": ["prepared_pr", "...", "verified"],
+    "state": { "prepared_pr": "pending", "...": "pending" }
+  },
   "protocol-baselines": {
     "graph": "0.1",
     "project": "0.1",
@@ -131,6 +184,7 @@ Abbreviated shape:
     "registry-packages": { "...": "required registry package gates" },
     "github-release-assets": { "...": "Runtime and Studio release asset gates" },
     "checksum-verification": { "...": "artifact id checksum gate" },
+    "preview-checksum-verification": { "...": "non-required preview artifact checksum gate" },
     "runtime-smoke": { "...": "target-keyed Runtime smoke gates" },
     "studio-package-smoke": { "...": "target-keyed Studio package smoke gates" },
     "examples-conformance": { "...": "examples repository/tag/version gate" },
@@ -167,6 +221,12 @@ sha256 value or the release includes a `${asset-name}.sha256` sidecar. Sidecars
 may contain either `<hex>  <filename>` or just `<hex>`; the verifier hashes the
 downloaded asset bytes and compares them to the parsed digest.
 
+Required release, checksum, and smoke gates may reference only
+`support-tier: "release-blocking"` artifacts. Preview target evidence belongs in
+non-required gates, such as `github-release-assets.runtime-preview`,
+`github-release-assets.studio-preview`, `preview-checksum-verification`, or
+target smoke rows with `required: false`.
+
 ## Workflows
 
 ### `validate-train-manifest.yml`
@@ -197,6 +257,11 @@ Inputs:
 
 - `target-repo` (required): `owner/repo`.
 - `train-version` (required): explicit `release-as` version.
+- `component` (required): train component row being dispatched.
+- `manifest` (required): checked-in conductor manifest path or inline JSON.
+- `manifest-ref`: conductor repository ref containing the manifest.
+- `expected-source-commit`: target repository source commit expected for this
+  component row. Required and validated for publish dispatches.
 - `mode`: default `prepare`; only `publish` can mutate.
 - `dry-run`: default `true`; must be `false` for mutation.
 - `workflow-file`: default `release-please.yml`.
