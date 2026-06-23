@@ -1,0 +1,4 @@
+# Generated release-train validation output
+.skenion-train/
+.skenion-ci/
+.caller/
