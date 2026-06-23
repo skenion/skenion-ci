@@ -1,14 +1,14 @@
-# Skenion CI
+# skenion CI
 
-Reusable GitHub Actions workflows for Skenion repositories.
+Reusable GitHub Actions workflows for skenion repositories.
 
-`echovisionlab/skenion` is the release train conductor: it owns product train
+`skenion/skenion` is the release train conductor: it owns product train
 sequencing, manifests, compatibility decisions, and final release reporting.
-`echovisionlab/skenion-ci` is the reusable workflow library that the conductor
+`skenion/skenion-ci` is the reusable workflow library that the conductor
 invokes from pinned workflow calls such as:
 
 ```yaml
-uses: echovisionlab/skenion-ci/.github/workflows/validate-train-manifest.yml@v1
+uses: skenion/skenion-ci/.github/workflows/validate-train-manifest.yml@v1
 ```
 
 The reusable workflows check out helper scripts from the exact workflow commit
@@ -29,7 +29,7 @@ secrets:
   SKENION_RELEASE_TRAIN_TOKEN: ${{ secrets.SKENION_RELEASE_TRAIN_TOKEN }}
 ```
 
-The token must be able to dispatch workflows across Skenion repositories and
+The token must be able to dispatch workflows across skenion repositories and
 read or write pull requests, releases, Actions runs, artifacts, and repository
 contents as required by the calling train phase. For GitHub fine-grained tokens,
 grant only the repositories in the release train and the minimum matching
@@ -53,10 +53,10 @@ The manifest is JSON. Inputs may pass either a path in the caller repository or
 an inline JSON string.
 
 The canonical shape is the Contracts v0.1 release-train manifest, defined in
-`Skenion-contracts` at
+`skenion-contracts` at
 `json-schema/release-train/v0.1/release-train.schema.json`. Use the Contracts
 fixture `fixtures/release-train/v0.1/valid/0.43.0.release-train.json` or the
-conductor manifest in `echovisionlab/skenion` as the complete example.
+conductor manifest in `skenion/skenion` as the complete example.
 
 Abbreviated shape:
 
@@ -87,7 +87,6 @@ Abbreviated shape:
       "crate": { "ecosystem": "crates.io", "name": "skenion-contracts", "version": "0.43.0", "url": null }
     },
     "runtime": {
-      "crate": { "ecosystem": "crates.io", "name": "skenion-runtime", "version": "0.43.0", "url": null },
       "binaries": {
         "aarch64-apple-darwin": {
           "id": "runtime-aarch64-apple-darwin",
@@ -98,7 +97,7 @@ Abbreviated shape:
           "version": "0.43.0",
           "source": {
             "kind": "github-release-asset",
-            "repository": "echovisionlab/Skenion-runtime",
+            "repository": "skenion/skenion-runtime",
             "tag": "skenion-runtime-v0.43.0",
             "assetName": "skenion-runtime-aarch64-apple-darwin.tar.gz",
             "url": null
@@ -112,13 +111,11 @@ Abbreviated shape:
       "npm": { "ecosystem": "npm", "name": "@skenion/sdk", "version": "0.43.0", "url": null }
     },
     "studio": {
-      "web": { "ecosystem": "npm", "name": "@skenion/studio-web", "version": "0.43.0", "url": null },
-      "desktop": { "ecosystem": "npm", "name": "@skenion/studio-desktop", "version": "0.43.0", "url": null },
       "desktopPackages": { "...": "target-keyed Studio package artifacts" },
       "runtimeSidecars": { "...": "target-keyed Runtime sidecar artifacts" }
     },
     "examples": {
-      "repository": "echovisionlab/Skenion-examples",
+      "repository": "skenion/skenion-examples",
       "version": "0.43.0",
       "tag": "skenion-examples-v0.43.0"
     },
@@ -126,7 +123,7 @@ Abbreviated shape:
       "manual": {
         "version": "0.43.0",
         "path": "/manual/0.43/",
-        "pagesUrl": "https://echovisionlab.github.io/Skenion-docs/manual/0.43/"
+        "pagesUrl": "https://skenion.github.io/skenion-docs/manual/0.43/"
       }
     }
   },
@@ -141,6 +138,12 @@ Abbreviated shape:
   }
 }
 ```
+
+The registry package surface is intentionally limited to importable libraries:
+`@skenion/contracts`, `skenion-contracts`, and `@skenion/sdk`. Runtime binaries,
+Studio web/desktop builds, examples, Manual pages, and this CI library are
+release assets, tags, deployments, or workflow refs rather than npm/crates
+packages.
 
 The workflow derives release order as
 `contracts -> runtime -> sdk -> studio -> examples -> docs` when `releaseOrder`
@@ -158,7 +161,11 @@ explicit support for them. Every release artifact must include an explicit
 `version` or `trainVersion` matching the train. Downloadable `url` and `binary`
 artifacts must include a `sha256` checksum. `page` and `github-pages` artifacts
 must include deployed version metadata and deployed status metadata. GitHub
-release asset entries may include `sha256` checksums for asset verification.
+release assets listed in `releaseGates.checksumVerification.artifactIds` fail
+closed during artifact verification unless the manifest contains a concrete
+sha256 value or the release includes a `${assetName}.sha256` sidecar. Sidecars
+may contain either `<hex>  <filename>` or just `<hex>`; the verifier hashes the
+downloaded asset bytes and compares them to the parsed digest.
 
 ## Workflows
 
@@ -212,6 +219,9 @@ Outputs:
 Verifies already released artifacts described by the manifest. It checks
 registries, GitHub releases, URLs, Pages endpoints, and described checksums; it
 does not fetch sibling repository branches or treat `main` as a release source.
+For checksum-gated GitHub release assets whose manifest checksum is still null,
+this workflow requires an uploaded `${assetName}.sha256` release asset and
+verifies the downloaded asset bytes against it.
 
 Inputs:
 
@@ -255,5 +265,5 @@ Outputs:
 This repository is licensed under the Apache License, Version 2.0.
 
 Redistributions must preserve copyright, license, and NOTICE information as
-required by Apache-2.0. If Skenion helps your artwork, research, publication,
-installation, or tool, please credit Skenion and EchoVisionLab.
+required by Apache-2.0. If skenion helps your artwork, research, publication,
+installation, or tool, please credit skenion and its contributors.

@@ -31,19 +31,28 @@ const EXPECTED_CONNECTION_PROFILES = ["local-managed", "local-shared", "remote"]
 const EXPECTED_REGISTRY_PACKAGES = {
   "contracts.npm": { ecosystem: "npm", name: "@skenion/contracts" },
   "contracts.crate": { ecosystem: "crates.io", name: "skenion-contracts" },
-  "runtime.crate": { ecosystem: "crates.io", name: "skenion-runtime" },
   "sdk.npm": { ecosystem: "npm", name: "@skenion/sdk" },
-  "studio.web": { ecosystem: "npm", name: "@skenion/studio-web" },
-  "studio.desktop": { ecosystem: "npm", name: "@skenion/studio-desktop" },
 };
 
 const CANONICAL_COMPONENT_REPOSITORIES = {
-  contracts: "echovisionlab/Skenion-contracts",
-  runtime: "echovisionlab/Skenion-runtime",
-  sdk: "echovisionlab/Skenion-sdk",
-  studio: "echovisionlab/Skenion-studio",
-  examples: "echovisionlab/Skenion-examples",
-  docs: "echovisionlab/Skenion-docs",
+  contracts: "skenion/skenion-contracts",
+  runtime: "skenion/skenion-runtime",
+  sdk: "skenion/skenion-sdk",
+  studio: "skenion/skenion-studio",
+  examples: "skenion/skenion-examples",
+  docs: "skenion/skenion-docs",
+};
+
+const CANONICAL_DOCS_PAGES_ORIGIN = "https://skenion.github.io/skenion-docs";
+const STUDIO_WEB_BUNDLE_ARTIFACT_ID = "studio-web-bundle";
+
+const PRODUCT_REGISTRY_PACKAGE_POLICIES = {
+  "components.runtime.crate":
+    "Runtime distribution is a GitHub Release multi-arch binary surface unless a later policy adds a stable embeddable library crate.",
+  "components.studio.web":
+    "Studio web is a deployed or released web/static product artifact unless a later policy adds an embeddable library package.",
+  "components.studio.desktop":
+    "Studio desktop is a signed GitHub Release desktop artifact, not an npm package.",
 };
 
 const RELEASE_BLOCKING_TARGETS = new Set([
@@ -251,6 +260,11 @@ function validateComponents(manifest, components, expectedVersion, trainId, erro
     }
     if (!isNonEmptyString(component.repository)) {
       errors.push(`Component "${component.name}" must include a repository field.`);
+    } else if (
+      CANONICAL_COMPONENT_REPOSITORIES[component.name] &&
+      component.repository !== CANONICAL_COMPONENT_REPOSITORIES[component.name]
+    ) {
+      errors.push(`Component "${component.name}" repository must be exactly "${CANONICAL_COMPONENT_REPOSITORIES[component.name]}".`);
     }
   }
 
@@ -269,14 +283,39 @@ function validateComponents(manifest, components, expectedVersion, trainId, erro
   const rawComponents = isPlainObject(manifest?.components) ? manifest.components : {};
   validateRegistryPackage(rawComponents.contracts?.npm, "components.contracts.npm", expectedVersion, EXPECTED_REGISTRY_PACKAGES["contracts.npm"], errors);
   validateRegistryPackage(rawComponents.contracts?.crate, "components.contracts.crate", expectedVersion, EXPECTED_REGISTRY_PACKAGES["contracts.crate"], errors);
-  validateRegistryPackage(rawComponents.runtime?.crate, "components.runtime.crate", expectedVersion, EXPECTED_REGISTRY_PACKAGES["runtime.crate"], errors);
   validateRegistryPackage(rawComponents.sdk?.npm, "components.sdk.npm", expectedVersion, EXPECTED_REGISTRY_PACKAGES["sdk.npm"], errors);
-  validateRegistryPackage(rawComponents.studio?.web, "components.studio.web", expectedVersion, EXPECTED_REGISTRY_PACKAGES["studio.web"], errors);
-  validateRegistryPackage(rawComponents.studio?.desktop, "components.studio.desktop", expectedVersion, EXPECTED_REGISTRY_PACKAGES["studio.desktop"], errors);
+  validateProductRegistryPackageAbsent(rawComponents.runtime?.crate, "components.runtime.crate", errors);
+  validateProductRegistryPackageAbsent(rawComponents.studio?.web, "components.studio.web", errors);
+  validateProductRegistryPackageAbsent(rawComponents.studio?.desktop, "components.studio.desktop", errors);
 
-  validateArtifactMap(rawComponents.runtime?.binaries, "components.runtime.binaries", "runtime-binary", expectedVersion, errors);
-  validateArtifactMap(rawComponents.studio?.desktopPackages, "components.studio.desktopPackages", "studio-desktop-package", expectedVersion, errors);
-  validateArtifactMap(rawComponents.studio?.runtimeSidecars, "components.studio.runtimeSidecars", "studio-runtime-sidecar", expectedVersion, errors);
+  validateArtifactMap(
+    rawComponents.runtime?.binaries,
+    "components.runtime.binaries",
+    "runtime-binary",
+    expectedVersion,
+    CANONICAL_COMPONENT_REPOSITORIES.runtime,
+    errors,
+  );
+  validateArtifactMap(
+    rawComponents.studio?.desktopPackages,
+    "components.studio.desktopPackages",
+    "studio-desktop-package",
+    expectedVersion,
+    CANONICAL_COMPONENT_REPOSITORIES.studio,
+    errors,
+    {
+      expectedName: (_artifact, target) => studioDesktopArchiveName(target),
+    },
+  );
+  validateArtifactMap(
+    rawComponents.studio?.runtimeSidecars,
+    "components.studio.runtimeSidecars",
+    "studio-runtime-sidecar",
+    expectedVersion,
+    CANONICAL_COMPONENT_REPOSITORIES.studio,
+    errors,
+  );
+  validateStudioWebBundleArtifact(rawComponents.studio?.["web-bundle"], expectedVersion, errors);
   validateExamplesComponent(rawComponents.examples, expectedVersion, errors);
   validateDocsComponent(rawComponents.docs, expectedVersion, trainId, errors);
 }
@@ -301,7 +340,15 @@ function validateRegistryPackage(packageRef, label, expectedVersion, expectedPac
   }
 }
 
-function validateArtifactMap(artifactMap, label, expectedKind, expectedVersion, errors) {
+function validateProductRegistryPackageAbsent(packageRef, label, errors) {
+  if (packageRef === undefined || packageRef === null) {
+    return;
+  }
+
+  errors.push(`${label} is outside the v0 registry publish surface. ${PRODUCT_REGISTRY_PACKAGE_POLICIES[label]}`);
+}
+
+function validateArtifactMap(artifactMap, label, expectedKind, expectedVersion, expectedRepository, errors, options = {}) {
   if (!isPlainObject(artifactMap)) {
     errors.push(`${label} must be an object keyed by target triple.`);
     return;
@@ -338,12 +385,66 @@ function validateArtifactMap(artifactMap, label, expectedKind, expectedVersion, 
     if (artifact.version !== expectedVersion) {
       errors.push(`${label}.${target}.version "${artifact.version}" must equal lockstep train version "${expectedVersion}".`);
     }
-    validateArtifactSource(artifact.source, `${label}.${target}.source`, artifact.checksum, errors);
+    if (expectedRepository && artifact.source?.kind !== "github-release-asset") {
+      errors.push(`${label}.${target}.source.kind must be "github-release-asset".`);
+    }
+    if (typeof options.expectedName === "function") {
+      const expectedName = options.expectedName(artifact, target);
+      if (artifact.name !== expectedName) {
+        errors.push(`${label}.${target}.name must be exactly "${expectedName}".`);
+      }
+      if (artifact.source?.kind === "github-release-asset" && artifact.source.assetName !== expectedName) {
+        errors.push(`${label}.${target}.source.assetName must be exactly "${expectedName}".`);
+      }
+    }
+    validateArtifactSource(artifact.source, `${label}.${target}.source`, artifact.checksum, errors, expectedRepository);
     validateChecksum(artifact.checksum, `${label}.${target}.checksum`, errors);
   }
 }
 
-function validateArtifactSource(source, label, checksum, errors) {
+function validateStudioWebBundleArtifact(artifact, expectedVersion, errors) {
+  const label = `components.studio["web-bundle"]`;
+  if (!isPlainObject(artifact)) {
+    errors.push(`${label} must be an object.`);
+    return;
+  }
+
+  const expectedName = `skenion-studio-web-bundle-v${expectedVersion}.tar.gz`;
+  const expectedTag = `skenion-studio-v${expectedVersion}`;
+  if (artifact.id !== STUDIO_WEB_BUNDLE_ARTIFACT_ID) {
+    errors.push(`${label}.id must be exactly "${STUDIO_WEB_BUNDLE_ARTIFACT_ID}".`);
+  }
+  if (artifact.kind !== "studio-web-bundle") {
+    errors.push(`${label}.kind must be exactly "studio-web-bundle".`);
+  }
+  if (artifact.name !== expectedName) {
+    errors.push(`${label}.name must be exactly "${expectedName}".`);
+  }
+  if (artifact.version !== expectedVersion) {
+    errors.push(`${label}.version "${artifact.version}" must equal lockstep train version "${expectedVersion}".`);
+  }
+  if (artifact.source?.kind !== "github-release-asset") {
+    errors.push(`${label}.source.kind must be "github-release-asset".`);
+  }
+  validateArtifactSource(
+    artifact.source,
+    `${label}.source`,
+    artifact.checksum,
+    errors,
+    CANONICAL_COMPONENT_REPOSITORIES.studio,
+  );
+  if (artifact.source?.kind === "github-release-asset") {
+    if (artifact.source.tag !== expectedTag) {
+      errors.push(`${label}.source.tag must be exactly "${expectedTag}".`);
+    }
+    if (artifact.source.assetName !== expectedName) {
+      errors.push(`${label}.source.assetName must be exactly "${expectedName}".`);
+    }
+  }
+  validateChecksum(artifact.checksum, `${label}.checksum`, errors);
+}
+
+function validateArtifactSource(source, label, checksum, errors, expectedRepository) {
   if (!isPlainObject(source)) {
     errors.push(`${label} must be an object.`);
     return;
@@ -352,6 +453,8 @@ function validateArtifactSource(source, label, checksum, errors) {
   if (source.kind === "github-release-asset") {
     if (!isRepositoryName(source.repository)) {
       errors.push(`${label}.repository must be in owner/repo form.`);
+    } else if (expectedRepository && source.repository !== expectedRepository) {
+      errors.push(`${label}.repository must be exactly "${expectedRepository}".`);
     }
     if (!isNonEmptyString(source.tag)) {
       errors.push(`${label}.tag must be a non-empty string.`);
@@ -398,6 +501,8 @@ function validateExamplesComponent(examples, expectedVersion, errors) {
   }
   if (!isRepositoryName(examples.repository)) {
     errors.push("components.examples.repository must be in owner/repo form.");
+  } else if (examples.repository !== CANONICAL_COMPONENT_REPOSITORIES.examples) {
+    errors.push(`components.examples.repository must be exactly "${CANONICAL_COMPONENT_REPOSITORIES.examples}".`);
   }
   if (examples.version !== expectedVersion) {
     errors.push(`components.examples.version "${examples.version}" must equal lockstep train version "${expectedVersion}".`);
@@ -421,8 +526,9 @@ function validateDocsComponent(docs, expectedVersion, trainId, errors) {
   if (manual.path !== expectedPath) {
     errors.push(`components.docs.manual.path must be exactly "${expectedPath}".`);
   }
-  if (!isNonEmptyString(manual.pagesUrl)) {
-    errors.push("components.docs.manual.pagesUrl must be a non-empty string.");
+  const expectedPagesUrl = `${CANONICAL_DOCS_PAGES_ORIGIN}${expectedPath}`;
+  if (manual.pagesUrl !== expectedPagesUrl) {
+    errors.push(`components.docs.manual.pagesUrl must be exactly "${expectedPagesUrl}".`);
   }
 }
 
@@ -485,9 +591,22 @@ function validateReleaseGates(manifest, expectedVersion, errors) {
   validateRegistryPackageGates(releaseGates.registryPackages, components, expectedVersion, errors);
 
   const artifactsById = releaseTrainArtifactsById(manifest, errors);
-  validateArtifactCollectionGate(releaseGates.githubReleaseAssets?.runtime, "releaseGates.githubReleaseAssets.runtime", artifactsById, errors);
-  validateArtifactCollectionGate(releaseGates.githubReleaseAssets?.studio, "releaseGates.githubReleaseAssets.studio", artifactsById, errors);
+  validateArtifactCollectionGate(
+    releaseGates.githubReleaseAssets?.runtime,
+    "releaseGates.githubReleaseAssets.runtime",
+    artifactsById,
+    CANONICAL_COMPONENT_REPOSITORIES.runtime,
+    errors,
+  );
+  validateArtifactCollectionGate(
+    releaseGates.githubReleaseAssets?.studio,
+    "releaseGates.githubReleaseAssets.studio",
+    artifactsById,
+    CANONICAL_COMPONENT_REPOSITORIES.studio,
+    errors,
+  );
   validateChecksumGate(releaseGates.checksumVerification, artifactsById, errors);
+  validateStudioWebBundleGateMembership(releaseGates, components.studio?.["web-bundle"], errors);
   validateRuntimeSmokeGates(releaseGates.runtimeSmoke, components.runtime?.binaries, artifactsById, errors);
   validateStudioSmokeGates(releaseGates.studioPackageSmoke, components.studio?.desktopPackages, components.studio?.runtimeSidecars, artifactsById, errors);
   validateExamplesConformanceGate(releaseGates.examplesConformance, components.examples, expectedVersion, errors);
@@ -503,11 +622,15 @@ function validateRegistryPackageGates(registryPackages, components, expectedVers
   const gates = [
     ["contractsNpm", "components.contracts.npm", components.contracts?.npm],
     ["contractsCrate", "components.contracts.crate", components.contracts?.crate],
-    ["runtimeCrate", "components.runtime.crate", components.runtime?.crate],
     ["sdkNpm", "components.sdk.npm", components.sdk?.npm],
-    ["studioWeb", "components.studio.web", components.studio?.web],
-    ["studioDesktop", "components.studio.desktop", components.studio?.desktop],
   ];
+  const allowedGateNames = new Set(gates.map(([gateName]) => gateName));
+
+  for (const gateName of Object.keys(registryPackages)) {
+    if (!allowedGateNames.has(gateName)) {
+      errors.push(`releaseGates.registryPackages.${gateName} is outside the v0 registry publish surface. Registry gates are only for importable library packages.`);
+    }
+  }
 
   for (const [gateName, componentLabel, componentPackage] of gates) {
     const gate = registryPackages[gateName];
@@ -529,13 +652,15 @@ function validateRegistryPackageGates(registryPackages, components, expectedVers
   }
 }
 
-function validateArtifactCollectionGate(gate, label, artifactsById, errors) {
+function validateArtifactCollectionGate(gate, label, artifactsById, expectedRepository, errors) {
   validateGateBase(gate, label, errors);
   if (!isPlainObject(gate)) {
     return;
   }
   if (!isRepositoryName(gate.repository)) {
     errors.push(`${label}.repository must be in owner/repo form.`);
+  } else if (expectedRepository && gate.repository !== expectedRepository) {
+    errors.push(`${label}.repository must be exactly "${expectedRepository}".`);
   }
   if (!isNonEmptyString(gate.tag)) {
     errors.push(`${label}.tag must be a non-empty string.`);
@@ -560,6 +685,22 @@ function validateArtifactCollectionGate(gate, label, artifactsById, errors) {
         errors.push(`${label}.tag must match artifact "${artifactId}" source tag.`);
       }
     }
+  }
+}
+
+function validateStudioWebBundleGateMembership(releaseGates, webBundleArtifact, errors) {
+  if (!isPlainObject(webBundleArtifact)) {
+    return;
+  }
+  const artifactId = webBundleArtifact.id;
+  if (!Array.isArray(releaseGates.githubReleaseAssets?.studio?.artifactIds)) {
+    return;
+  }
+  if (!releaseGates.githubReleaseAssets.studio.artifactIds.includes(artifactId)) {
+    errors.push(`releaseGates.githubReleaseAssets.studio.artifactIds must include components.studio["web-bundle"].id.`);
+  }
+  if (Array.isArray(releaseGates.checksumVerification?.artifactIds) && !releaseGates.checksumVerification.artifactIds.includes(artifactId)) {
+    errors.push(`releaseGates.checksumVerification.artifactIds must include components.studio["web-bundle"].id.`);
   }
 }
 
@@ -851,7 +992,7 @@ function normalizeComponentFromContractsShape(name, component) {
     return normalizeComponent({
       ...component,
       name,
-      version: component.crate?.version,
+      version: firstValue(firstArtifactVersion(component.binaries), component.crate?.version),
       repository: component.repository ?? component.repo ?? repositoryFromArtifacts(component.binaries) ?? CANONICAL_COMPONENT_REPOSITORIES.runtime,
     });
   }
@@ -869,11 +1010,18 @@ function normalizeComponentFromContractsShape(name, component) {
     return normalizeComponent({
       ...component,
       name,
-      version: firstValue(component.web?.version, component.desktop?.version),
+      version: firstValue(
+        firstArtifactVersion(component.desktopPackages),
+        firstArtifactVersion(component.runtimeSidecars),
+        component["web-bundle"]?.version,
+        component.web?.version,
+        component.desktop?.version,
+      ),
       repository:
         component.repository ??
         component.repo ??
         repositoryFromArtifacts(component.desktopPackages, component.runtimeSidecars) ??
+        repositoryFromArtifacts({ "web-bundle": component["web-bundle"] }) ??
         CANONICAL_COMPONENT_REPOSITORIES.studio,
     });
   }
@@ -1058,8 +1206,9 @@ function extractContractsReleaseArtifacts(manifest) {
   }
 
   const artifactsById = releaseTrainArtifactsById(manifest);
-  collectGitHubReleaseGateArtifact(releaseGates.githubReleaseAssets?.runtime, "runtime", artifactsById, manifest.trainVersion, artifacts);
-  collectGitHubReleaseGateArtifact(releaseGates.githubReleaseAssets?.studio, "studio", artifactsById, manifest.trainVersion, artifacts);
+  const checksumGate = checksumGateArtifacts(releaseGates.checksumVerification);
+  collectGitHubReleaseGateArtifact(releaseGates.githubReleaseAssets?.runtime, "runtime", artifactsById, manifest.trainVersion, artifacts, checksumGate);
+  collectGitHubReleaseGateArtifact(releaseGates.githubReleaseAssets?.studio, "studio", artifactsById, manifest.trainVersion, artifacts, checksumGate);
 
   for (const artifact of releaseTrainArtifacts(manifest)) {
     if (artifact.source?.kind === "url") {
@@ -1088,7 +1237,7 @@ function extractContractsReleaseArtifacts(manifest) {
   return artifacts;
 }
 
-function collectGitHubReleaseGateArtifact(gate, component, artifactsById, trainVersion, artifacts) {
+function collectGitHubReleaseGateArtifact(gate, component, artifactsById, trainVersion, artifacts, checksumGate) {
   if (!isPlainObject(gate) || !Array.isArray(gate.artifactIds)) {
     return;
   }
@@ -1098,10 +1247,15 @@ function collectGitHubReleaseGateArtifact(gate, component, artifactsById, trainV
     if (!artifact || artifact.source?.kind !== "github-release-asset") {
       return [];
     }
+    const name = artifact.source.assetName ?? artifact.name;
+    const sha256 = artifact.checksum?.value ?? checksumGate.expectedChecksums.get(artifactId)?.value ?? undefined;
     return [
       {
-        name: artifact.source.assetName ?? artifact.name,
-        sha256: artifact.checksum?.value ?? undefined,
+        name,
+        sha256,
+        checksumRequired: checksumGate.artifactIds.has(artifactId),
+        checksumArtifactId: artifactId,
+        checksumSidecarName: `${name}.sha256`,
       },
     ];
   });
@@ -1114,6 +1268,19 @@ function collectGitHubReleaseGateArtifact(gate, component, artifactsById, trainV
     version: trainVersion,
     assets,
   });
+}
+
+function checksumGateArtifacts(gate) {
+  const artifactIds = new Set(Array.isArray(gate?.artifactIds) ? gate.artifactIds.filter(isNonEmptyString) : []);
+  const expectedChecksums = new Map();
+  if (isPlainObject(gate?.expectedChecksums)) {
+    for (const [artifactId, checksum] of Object.entries(gate.expectedChecksums)) {
+      if (isSha256(checksum?.value)) {
+        expectedChecksums.set(artifactId, checksum);
+      }
+    }
+  }
+  return { artifactIds, expectedChecksums };
 }
 
 function collectArtifacts(value, inherited, artifacts) {
@@ -1195,6 +1362,7 @@ function releaseTrainArtifacts(manifest) {
     ...objectValues(components.runtime?.binaries),
     ...objectValues(components.studio?.desktopPackages),
     ...objectValues(components.studio?.runtimeSidecars),
+    components.studio?.["web-bundle"],
   ].filter(isPlainObject);
 }
 
@@ -1232,6 +1400,11 @@ function expectedSupportTier(target) {
   return RELEASE_BLOCKING_TARGETS.has(target) ? "release-blocking" : "preview";
 }
 
+function studioDesktopArchiveName(target) {
+  const extension = target.includes("windows-msvc") ? "zip" : "tar.gz";
+  return `skenion-studio-${target}.${extension}`;
+}
+
 function packageIdentity(packageRef) {
   if (!isPlainObject(packageRef)) {
     return "";
@@ -1255,6 +1428,17 @@ function validateUniqueStrings(values, label, errors) {
 
 function firstValue(...values) {
   return values.find((value) => value !== undefined && value !== null && String(value).trim() !== "");
+}
+
+function firstArtifactVersion(...artifactMaps) {
+  for (const artifactMap of artifactMaps) {
+    for (const artifact of objectValues(artifactMap)) {
+      if (isNonEmptyString(artifact.version)) {
+        return artifact.version;
+      }
+    }
+  }
+  return undefined;
 }
 
 function objectValues(value) {
@@ -1290,6 +1474,9 @@ function componentNameFromArtifactKind(kind) {
     return "runtime";
   }
   if (kind === "studio-desktop-package" || kind === "studio-runtime-sidecar") {
+    return "studio";
+  }
+  if (kind === "studio-web-bundle") {
     return "studio";
   }
   return "";

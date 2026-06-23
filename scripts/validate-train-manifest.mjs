@@ -71,7 +71,7 @@ try {
     process.exit(1);
   }
 
-  console.log(`Validated Skenion release train ${trainId} (${trainVersion}) in ${mode} mode.`);
+  console.log(`Validated skenion release train ${trainId} (${trainVersion}) in ${mode} mode.`);
 } catch (error) {
   console.error(`::error::${error.message}`);
   process.exit(1);
@@ -80,7 +80,7 @@ try {
 function renderSummary(summary, errors) {
   const status = errors.length === 0 ? "passed" : "failed";
   return [
-    "## Skenion Train Manifest Validation",
+    "## skenion Train Manifest Validation",
     "",
     `- Status: ${status}`,
     `- Mode: ${summary.mode}`,

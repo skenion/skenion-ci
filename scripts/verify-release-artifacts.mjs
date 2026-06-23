@@ -19,6 +19,12 @@ import {
 
 try {
   const args = parseArgs();
+  if (args["self-check"] === "true") {
+    await runSelfCheck();
+    console.log("verify-release-artifacts self-check passed.");
+    process.exit(0);
+  }
+
   const manifestInput = requireArg(args, "manifest");
   const expectedVersion = requireArg(args, "train-version");
   const outDir = args["out-dir"] ?? ".skenion-train";
@@ -64,7 +70,7 @@ try {
 
   const report = {
     schema: "skenion.release-artifact-verification.v1",
-    name: "Skenion Release Artifact Verification",
+    name: "skenion Release Artifact Verification",
     version: 1,
     trainId: header.trainId,
     trainVersion: expectedVersion,
@@ -147,13 +153,20 @@ async function verifyGitHubRelease(artifact, token) {
   }
 
   const expectedAssets = normalizeAssetList(artifact.assets ?? artifact.expectedAssets);
+  const checksumChecks = [];
   for (const expectedAsset of expectedAssets) {
     const actual = release.assets.find((asset) => asset.name === expectedAsset.name);
     if (!actual) {
       throw new Error(`GitHub release ${repo}@${tag} is missing asset "${expectedAsset.name}".`);
     }
-    if (expectedAsset.sha256) {
-      await verifyDownloadSha256(actual.url, expectedAsset.sha256, token, true);
+    const checksum = await resolveAssetChecksum(expectedAsset, release.assets, token);
+    if (checksum) {
+      const actualSha256 = await verifyDownloadSha256(actual.url, checksum.value, token, true);
+      checksumChecks.push({
+        asset: expectedAsset.name,
+        source: checksum.source,
+        sha256: actualSha256,
+      });
     }
   }
 
@@ -164,6 +177,7 @@ async function verifyGitHubRelease(artifact, token) {
     status: "passed",
     assetCount: release.assets.length,
     checkedAssets: expectedAssets.map((asset) => asset.name),
+    checksumChecks,
   };
 }
 
@@ -269,21 +283,133 @@ async function assertUrlReachable(url) {
   }
 }
 
-async function verifyDownloadSha256(url, expected, token = "", githubAsset = false) {
-  const response = await fetch(url, {
-    headers: githubAsset
-      ? githubHeaders(token, { Accept: "application/octet-stream" })
-      : baseHeaders(),
-  });
-  if (!response.ok) {
-    throw new Error(`checksum download failed for ${url} with ${response.status}.`);
+async function resolveAssetChecksum(expectedAsset, releaseAssets, token) {
+  const manifestSha256 = normalizeSha256(expectedAsset.sha256, `manifest checksum for asset "${expectedAsset.name}"`);
+  if (manifestSha256) {
+    return { value: manifestSha256, source: "manifest" };
   }
 
-  const buffer = Buffer.from(await response.arrayBuffer());
-  const actual = crypto.createHash("sha256").update(buffer).digest("hex");
-  if (actual.toLowerCase() !== String(expected).toLowerCase()) {
-    throw new Error(`sha256 mismatch for ${url}: expected ${expected}, got ${actual}.`);
+  if (!expectedAsset.checksumRequired) {
+    return null;
   }
+
+  const sidecarName = expectedAsset.checksumSidecarName ?? `${expectedAsset.name}.sha256`;
+  const sidecar = releaseAssets.find((asset) => asset.name === sidecarName);
+  if (!sidecar) {
+    throw new Error(`GitHub release asset "${expectedAsset.name}" is checksum-gated but has no manifest sha256 and is missing sidecar "${sidecarName}".`);
+  }
+
+  const buffer = await downloadBytes(sidecar.url, githubHeaders(token, { Accept: "application/octet-stream" }), `checksum sidecar download failed for ${sidecarName}`);
+  const sha256 = parseSha256Sidecar(buffer.toString("utf8"), expectedAsset.name, sidecarName);
+  return { value: sha256, source: `sidecar:${sidecarName}` };
+}
+
+async function verifyDownloadSha256(url, expected, token = "", githubAsset = false) {
+  const expectedSha256 = normalizeSha256(expected, `expected sha256 for ${url}`);
+  const buffer = await downloadBytes(
+    url,
+    githubAsset
+      ? githubHeaders(token, { Accept: "application/octet-stream" })
+      : baseHeaders(),
+    `checksum download failed for ${url}`,
+  );
+  const actual = crypto.createHash("sha256").update(buffer).digest("hex");
+  if (actual.toLowerCase() !== expectedSha256) {
+    throw new Error(`sha256 mismatch for ${url}: expected ${expectedSha256}, got ${actual}.`);
+  }
+  return actual;
+}
+
+async function downloadBytes(url, headers, failurePrefix) {
+  const response = await fetch(url, { headers });
+  if (!response.ok) {
+    throw new Error(`${failurePrefix} with ${response.status}.`);
+  }
+
+  return Buffer.from(await response.arrayBuffer());
+}
+
+function parseSha256Sidecar(text, assetName, sidecarName) {
+  const lines = String(text ?? "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length !== 1) {
+    throw new Error(`checksum sidecar "${sidecarName}" must contain exactly one sha256 line.`);
+  }
+
+  const match = lines[0].match(/^([a-fA-F0-9]{64})(?:\s+\*?(.+))?$/);
+  if (!match) {
+    throw new Error(`checksum sidecar "${sidecarName}" must contain a sha256 hex digest, optionally followed by the asset filename.`);
+  }
+
+  const filename = match[2]?.trim();
+  if (filename && basename(filename) !== assetName) {
+    throw new Error(`checksum sidecar "${sidecarName}" filename "${filename}" does not match asset "${assetName}".`);
+  }
+
+  return match[1].toLowerCase();
+}
+
+function normalizeSha256(value, label) {
+  if (value === undefined || value === null || String(value).trim() === "") {
+    return "";
+  }
+  const text = String(value).trim().toLowerCase();
+  if (!/^[a-f0-9]{64}$/.test(text)) {
+    throw new Error(`${label} must be a 64-character sha256 hex digest.`);
+  }
+  return text;
+}
+
+function basename(value) {
+  return String(value).split(/[\\/]/).pop();
+}
+
+async function runSelfCheck() {
+  const digest = "a".repeat(64);
+  assertSelfCheck(parseSha256Sidecar(`${digest}  asset.tgz\n`, "asset.tgz", "asset.tgz.sha256") === digest, "parses sha256sum sidecar format");
+  assertSelfCheck(parseSha256Sidecar(`${digest}\n`, "asset.tgz", "asset.tgz.sha256") === digest, "parses bare sha256 sidecar format");
+  assertSelfCheck(
+    normalizeAssetList([{ name: "asset.tgz", checksum: { value: digest }, checksumRequired: true }])[0].sha256 === digest,
+    "normalizes checksum.value metadata",
+  );
+  await assertSelfCheckRejects(
+    () => resolveAssetChecksum({ name: "asset.tgz", checksumRequired: true }, [], ""),
+    /missing sidecar "asset\.tgz\.sha256"/,
+    "checksum-gated assets without manifest checksum require sidecars",
+  );
+  assertSelfCheckThrows(
+    () => parseSha256Sidecar(`${digest}  other.tgz\n`, "asset.tgz", "asset.tgz.sha256"),
+    /does not match asset/,
+    "rejects sidecar filenames that do not match the asset",
+  );
+}
+
+function assertSelfCheck(condition, message) {
+  if (!condition) {
+    throw new Error(`self-check failed: ${message}`);
+  }
+}
+
+function assertSelfCheckThrows(fn, pattern, message) {
+  try {
+    fn();
+  } catch (error) {
+    assertSelfCheck(pattern.test(error.message), message);
+    return;
+  }
+  throw new Error(`self-check failed: ${message}`);
+}
+
+async function assertSelfCheckRejects(fn, pattern, message) {
+  try {
+    await fn();
+  } catch (error) {
+    assertSelfCheck(pattern.test(error.message), message);
+    return;
+  }
+  throw new Error(`self-check failed: ${message}`);
 }
 
 function inferType(artifact) {
@@ -322,7 +448,10 @@ function normalizeAssetList(value) {
     }
     return {
       name: asset.name,
-      sha256: asset.sha256 ?? asset.checksum?.sha256,
+      sha256: asset.sha256 ?? asset.checksum?.sha256 ?? asset.checksum?.value,
+      checksumRequired: Boolean(asset.checksumRequired),
+      checksumArtifactId: asset.checksumArtifactId,
+      checksumSidecarName: asset.checksumSidecarName,
     };
   });
 }
