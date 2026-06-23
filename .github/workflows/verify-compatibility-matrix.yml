@@ -20,7 +20,7 @@ on:
       out-dir:
         description: Directory for the normalized matrix, JSON report, and Markdown summary.
         required: false
-        default: .skenion-train
+        default: .skenion-compatibility
         type: string
     secrets:
       GH_TOKEN:

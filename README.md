@@ -1,11 +1,10 @@
 # skenion CI
 
-Reusable GitHub Actions workflows for skenion release verification.
+Reusable GitHub Actions workflows for skenion compatibility verification.
 
 `skenion/skenion-ci` is a workflow library for compatibility matrix validation
-and promotion evidence. It is not the release train conductor and does not
-dispatch component Release Please workflows from `main`. Component repositories
-own their own Release Please, tag, release, package, and artifact workflows.
+and promotion evidence. Component repositories own their own versioning, tags,
+package publication, and artifact workflows.
 
 Publishing remains GitHub Actions only. This repository verifies already
 declared evidence; it must not publish npm packages, crates, GitHub releases, or
@@ -36,7 +35,7 @@ release assets for checksum verification. Registry and local shape checks do
 not require GitHub API credentials.
 
 The workflow writes a normalized matrix, a JSON report, and a Markdown summary
-under the configured `out-dir` (default `.skenion-train`) and exposes these
+under the configured `out-dir` (default `.skenion-compatibility`) and exposes these
 outputs:
 
 - `status`
@@ -83,9 +82,11 @@ Inputs:
 
 - `matrix` (required): path to a compatibility matrix JSON file in the caller
   repository, or an inline JSON string.
-- `manifest-ref`: optional caller repository ref for path matrices.
-- `manifest-root`: checkout path used as the matrix root; default `.caller`.
-- `out-dir`: output directory for reports; default `.skenion-train`.
+- `manifest-ref`: optional caller repository ref used to load a path-based
+  compatibility matrix.
+- `manifest-root`: checkout path used as the compatibility matrix root; default
+  `.caller`.
+- `out-dir`: output directory for reports; default `.skenion-compatibility`.
 
 Secret:
 
@@ -100,20 +101,6 @@ Outputs:
 - `report-path`
 - `summary-path`
 - `summary`
-
-## Deprecated v1 Workflows
-
-The old train-manifest workflows remain in the repository as historical v1
-validation helpers, but they are not the main release model. `v1` tag users can
-continue to pin historical behavior. On `main`,
-`dispatch-release-please.yml` fails closed with a removal message; component
-repositories own Release Please.
-
-`verify-release-artifacts.yml` is a deprecated v1 artifact verifier. On `main`
-it accepts caller-provided `GH_TOKEN` only for GitHub release and asset reads.
-
-Existing v1 train validation scripts are isolated from the v2 compatibility
-matrix path and should not be extended for new M06.9 promotion work.
 
 ## Local Validation
 
