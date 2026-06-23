@@ -39,7 +39,7 @@ try {
 
   const result = {
     schema: "skenion.release-train-result.v1",
-    name: "Skenion Release Train Result",
+    name: "skenion Release Train Result",
     version: 1,
     trainId,
     trainVersion,
@@ -81,7 +81,7 @@ try {
   setOutput("summary-path", summaryPath);
   setOutput("artifact-name", artifactName);
 
-  console.log(`Recorded Skenion train result ${artifactName}.`);
+  console.log(`Recorded skenion train result ${artifactName}.`);
 } catch (error) {
   console.error(`::error::${error.message}`);
   process.exit(1);
@@ -112,7 +112,7 @@ function normalizeStatus(value) {
 
 function renderSummary(result) {
   return [
-    "## Skenion Train Result",
+    "## skenion Train Result",
     "",
     `- Train: ${result.trainId} (${result.trainVersion})`,
     `- Mode: ${result.mode}`,
