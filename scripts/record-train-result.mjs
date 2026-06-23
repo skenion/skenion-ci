@@ -16,6 +16,7 @@ import {
   manifestHeader,
   normalizeComponents,
   readManifestSource,
+  releaseAuthorityState,
   releaseOrder,
 } from "./lib/manifest.mjs";
 
@@ -55,6 +56,7 @@ try {
       "train-version": header["train-version"] ?? null,
       "component-count": components.length,
       "release-order": manifestResult.manifest ? releaseOrder(manifestResult.manifest) : [],
+      "release-authority-state": manifestResult.manifest ? releaseAuthorityState(manifestResult.manifest) : {},
     },
     github: {
       repository: process.env.GITHUB_REPOSITORY ?? "",
@@ -119,9 +121,16 @@ function renderSummary(result) {
     `- Status: ${result.status}`,
     `- Components: ${result.manifest["component-count"]}`,
     `- Release order: ${result.manifest["release-order"].join(" -> ") || "(unavailable)"}`,
+    `- Release authority state: ${renderAuthorityState(result.manifest["release-authority-state"])}`,
     `- Run: ${result.github.repository}#${result.github["run-id"]}`,
     ...(result.summary ? [`- Summary: ${result.summary}`] : []),
     ...(result.manifest.error ? [`- Manifest warning: ${result.manifest.error}`] : []),
     "",
   ].join("\n");
+}
+
+function renderAuthorityState(state) {
+  return Object.entries(state)
+    .map(([name, status]) => `${name}=${status ?? "(missing)"}`)
+    .join(", ") || "(unavailable)";
 }

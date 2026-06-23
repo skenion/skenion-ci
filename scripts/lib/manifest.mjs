@@ -14,6 +14,17 @@ export const REQUIRED_RUNTIME_TARGETS = [
 export const EXPECTED_TRAIN_MANIFEST_SCHEMA = "skenion.release-train";
 export const EXPECTED_TRAIN_MANIFEST_SCHEMA_VERSION = "0.1.0";
 export const EXPECTED_RELEASE_ORDER = ["contracts", "runtime", "sdk", "studio", "examples", "docs"];
+export const RELEASE_DISPATCH_COMPONENTS = ["contracts", "runtime", "sdk", "studio"];
+export const EXPECTED_RELEASE_AUTHORITY_STATES = [
+  "prepared_pr",
+  "merged_release_commit",
+  "tag_exists",
+  "github_release_exists",
+  "artifacts_uploaded",
+  "registry_package_exists",
+  "docs_deployed",
+  "verified",
+];
 
 export const REQUIRED_STUDIO_TARGETS = REQUIRED_RUNTIME_TARGETS;
 
@@ -34,7 +45,7 @@ const EXPECTED_REGISTRY_PACKAGES = {
   "sdk.npm": { ecosystem: "npm", name: "@skenion/sdk" },
 };
 
-const CANONICAL_COMPONENT_REPOSITORIES = {
+export const CANONICAL_COMPONENT_REPOSITORIES = {
   contracts: "skenion/skenion-contracts",
   runtime: "skenion/skenion-runtime",
   sdk: "skenion/skenion-sdk",
@@ -80,6 +91,7 @@ export function validateTrainManifestInvariants(manifest, expectedVersion) {
 
   validateHeader(header, expectedVersion, errors);
   validateContractsManifestShape(manifest, errors);
+  validateReleaseAuthority(manifest, errors);
   validateProtocolBaselines(manifest?.["protocol-baselines"], "protocol-baselines", errors);
   validateCapabilitySet(manifest?.["capability-set"], errors);
   validateComponents(manifest, components, expectedVersion, trainId, errors);
@@ -125,7 +137,7 @@ function validateHeader(header, expectedVersion, errors) {
 }
 
 function validateContractsManifestShape(manifest, errors) {
-  for (const field of ["protocol-baselines", "capability-set", "components", "release-gates"]) {
+  for (const field of ["release-authority", "protocol-baselines", "capability-set", "components", "release-gates"]) {
     if (!isPlainObject(manifest?.[field])) {
       errors.push(`Manifest must include a ${field} object.`);
     }
@@ -133,6 +145,210 @@ function validateContractsManifestShape(manifest, errors) {
 
   if (Array.isArray(manifest?.components)) {
     errors.push("Manifest components must use the Contracts v0.1 object shape, not an array.");
+  }
+}
+
+function validateReleaseAuthority(manifest, errors) {
+  const value = manifest?.["release-authority"];
+  const label = "release-authority";
+  if (!isPlainObject(value)) {
+    return;
+  }
+
+  if (value.model !== "hub-conductor-manifest") {
+    errors.push(`${label}.model must be exactly "hub-conductor-manifest".`);
+  }
+  if (value["owner-repository"] !== "skenion/skenion") {
+    errors.push(`${label}.owner-repository must be exactly "skenion/skenion".`);
+  }
+  if (value["conductor-workflow"] !== ".github/workflows/release-train.yml") {
+    errors.push(`${label}.conductor-workflow must be exactly ".github/workflows/release-train.yml".`);
+  }
+  if (
+    value["tracking-issue"] !== undefined &&
+    !/^skenion\/skenion#[1-9][0-9]*$/.test(String(value["tracking-issue"]))
+  ) {
+    errors.push(`${label}.tracking-issue must be in skenion/skenion#123 form when provided.`);
+  }
+
+  validateReleasePleaseAuthority(value["release-please"], `${label}.release-please`, errors);
+  validateRepositoryWorkflowAuthority(value["repository-workflows"], `${label}.repository-workflows`, errors);
+
+  if (!Array.isArray(value["state-order"]) || !arraysEqual(value["state-order"], EXPECTED_RELEASE_AUTHORITY_STATES)) {
+    errors.push(`${label}.state-order must be exactly ${EXPECTED_RELEASE_AUTHORITY_STATES.join(" -> ")}.`);
+  }
+
+  const state = value.state;
+  if (!isPlainObject(state)) {
+    errors.push(`${label}.state must be an object.`);
+    return;
+  }
+
+  for (const stateName of Object.keys(state)) {
+    if (!EXPECTED_RELEASE_AUTHORITY_STATES.includes(stateName)) {
+      errors.push(`${label}.state includes unsupported state "${stateName}".`);
+    }
+  }
+
+  for (const stateName of EXPECTED_RELEASE_AUTHORITY_STATES) {
+    if (!GATE_STATUSES.has(state[stateName])) {
+      errors.push(`${label}.state.${stateName} must be one of ${[...GATE_STATUSES].join(", ")}.`);
+    }
+  }
+
+  validateReleaseAuthorityWaivers(value, `${label}.waivers`, errors);
+  validateReleaseAuthorityStateOrder(state, `${label}.state`, errors);
+  validateReleaseAuthorityGateConsistency(manifest, state, errors);
+}
+
+function validateReleaseAuthorityWaivers(authority, label, errors) {
+  const waivers = authority.waivers;
+  if (waivers !== undefined && !isPlainObject(waivers)) {
+    errors.push(`${label} must be an object when provided.`);
+    return;
+  }
+
+  for (const [stateName, waiver] of Object.entries(waivers ?? {})) {
+    if (!EXPECTED_RELEASE_AUTHORITY_STATES.includes(stateName)) {
+      errors.push(`${label}.${stateName} is not a supported release authority state.`);
+      continue;
+    }
+    if (authority.state?.[stateName] !== "waived") {
+      errors.push(`${label}.${stateName} is only valid when release-authority.state.${stateName} is "waived".`);
+    }
+    validateWaiver(waiver, `${label}.${stateName}`, errors);
+  }
+
+  for (const stateName of EXPECTED_RELEASE_AUTHORITY_STATES) {
+    if (authority.state?.[stateName] === "waived" && !isPlainObject(waivers?.[stateName])) {
+      errors.push(`${label}.${stateName} is required when release-authority.state.${stateName} is "waived".`);
+    }
+  }
+}
+
+function validateWaiver(waiver, label, errors) {
+  if (!isPlainObject(waiver)) {
+    errors.push(`${label} must be an object.`);
+    return;
+  }
+  if (!isNonEmptyString(waiver.reason)) {
+    errors.push(`${label}.reason must be a non-empty string.`);
+  }
+  if (!isNonEmptyString(waiver["approved-by"])) {
+    errors.push(`${label}["approved-by"] must be a non-empty string.`);
+  }
+  if (!isNonEmptyString(waiver["approved-at"]) || Number.isNaN(Date.parse(waiver["approved-at"]))) {
+    errors.push(`${label}["approved-at"] must be an ISO-parseable timestamp.`);
+  }
+}
+
+function validateReleaseAuthorityStateOrder(state, label, errors) {
+  let incompleteState = null;
+  for (const stateName of EXPECTED_RELEASE_AUTHORITY_STATES) {
+    const status = state[stateName];
+    if ((status === "passed" || status === "waived") && incompleteState) {
+      errors.push(`${label}.${stateName} cannot be ${status} while ${incompleteState} is incomplete.`);
+    }
+    if (status === "pending" || status === "failed") {
+      incompleteState ??= stateName;
+    }
+  }
+}
+
+function validateReleaseAuthorityGateConsistency(manifest, state, errors) {
+  validateStateGateGroup(
+    state.registry_package_exists,
+    "release-authority.state.registry_package_exists",
+    releaseGateStatuses(manifest, ["registry-packages"]),
+    errors,
+  );
+  validateStateGateGroup(
+    state.artifacts_uploaded,
+    "release-authority.state.artifacts_uploaded",
+    releaseGateStatuses(manifest, ["github-release-assets", "checksum-verification"]),
+    errors,
+  );
+  validateStateGateGroup(
+    state.docs_deployed,
+    "release-authority.state.docs_deployed",
+    releaseGateStatuses(manifest, ["docs-pages-deployment"]),
+    errors,
+  );
+  validateStateGateGroup(
+    state.verified,
+    "release-authority.state.verified",
+    releaseGateStatuses(manifest),
+    errors,
+  );
+}
+
+function validateStateGateGroup(stateStatus, label, gateStatuses, errors) {
+  if (stateStatus !== "passed" && stateStatus !== "waived") {
+    return;
+  }
+  for (const gate of gateStatuses) {
+    if (gate.required && gate.status !== "passed" && gate.status !== "waived") {
+      errors.push(`${label} cannot be ${stateStatus} while required ${gate.label} is ${gate.status ?? "missing"}.`);
+    }
+  }
+}
+
+function releaseGateStatuses(manifest, topLevelNames) {
+  const releaseGates = manifest?.["release-gates"];
+  if (!isPlainObject(releaseGates)) {
+    return [];
+  }
+  const names = topLevelNames ?? Object.keys(releaseGates);
+  return names.flatMap((name) => collectReleaseGateStatuses(releaseGates[name], `release-gates.${name}`));
+}
+
+function collectReleaseGateStatuses(value, label) {
+  if (!isPlainObject(value)) {
+    return [];
+  }
+  const current = Object.hasOwn(value, "status") || Object.hasOwn(value, "required")
+    ? [{ label, status: value.status, required: value.required === true }]
+    : [];
+  return [
+    ...current,
+    ...Object.entries(value).flatMap(([key, child]) => collectReleaseGateStatuses(child, `${label}.${key}`)),
+  ];
+}
+
+function validateReleasePleaseAuthority(value, label, errors) {
+  if (!isPlainObject(value)) {
+    errors.push(`${label} must be an object.`);
+    return;
+  }
+  if (value.role !== "prepare-release-pr") {
+    errors.push(`${label}.role must be exactly "prepare-release-pr".`);
+  }
+  for (const field of [
+    "independent-train-authority",
+    "may-publish-tags",
+    "may-publish-github-releases",
+    "may-publish-artifacts",
+    "may-publish-registry-packages",
+  ]) {
+    if (value[field] !== false) {
+      errors.push(`${label}.${field} must be false.`);
+    }
+  }
+}
+
+function validateRepositoryWorkflowAuthority(value, label, errors) {
+  if (!isPlainObject(value)) {
+    errors.push(`${label} must be an object.`);
+    return;
+  }
+  for (const field of [
+    "require-conductor-dispatch",
+    "require-manifest-row",
+    "require-expected-source-commit",
+  ]) {
+    if (value[field] !== true) {
+      errors.push(`${label}.${field} must be true.`);
+    }
   }
 }
 
@@ -265,6 +481,10 @@ function validateComponents(manifest, components, expectedVersion, trainId, erro
       component.repository !== CANONICAL_COMPONENT_REPOSITORIES[component.name]
     ) {
       errors.push(`Component "${component.name}" repository must be exactly "${CANONICAL_COMPONENT_REPOSITORIES[component.name]}".`);
+    }
+
+    if (RELEASE_DISPATCH_COMPONENTS.includes(component.name) && !isCommitSha(component.expectedSourceCommit)) {
+      errors.push(`Component "${component.name}" expected-source-commit must be a 40-character git commit SHA for conductor publish dispatches.`);
     }
   }
 
@@ -605,7 +825,29 @@ function validateReleaseGates(manifest, expectedVersion, errors) {
     CANONICAL_COMPONENT_REPOSITORIES.studio,
     errors,
   );
+  validateArtifactCollectionGate(
+    releaseGates["github-release-assets"]?.["runtime-preview"],
+    "release-gates.github-release-assets.runtime-preview",
+    artifactsById,
+    CANONICAL_COMPONENT_REPOSITORIES.runtime,
+    errors,
+    { optional: true },
+  );
+  validateArtifactCollectionGate(
+    releaseGates["github-release-assets"]?.["studio-preview"],
+    "release-gates.github-release-assets.studio-preview",
+    artifactsById,
+    CANONICAL_COMPONENT_REPOSITORIES.studio,
+    errors,
+    { optional: true },
+  );
   validateChecksumGate(releaseGates["checksum-verification"], artifactsById, errors);
+  validateChecksumGate(
+    releaseGates["preview-checksum-verification"],
+    artifactsById,
+    errors,
+    { label: "release-gates.preview-checksum-verification", optional: true },
+  );
   validateStudioWebBundleGateMembership(releaseGates, components.studio?.["web-bundle"], errors);
   validateRuntimeSmokeGates(releaseGates["runtime-smoke"], components.runtime?.binaries, artifactsById, errors);
   validateStudioSmokeGates(releaseGates["studio-package-smoke"], components.studio?.["desktop-packages"], components.studio?.["runtime-sidecars"], artifactsById, errors);
@@ -652,7 +894,10 @@ function validateRegistryPackageGates(registryPackages, components, expectedVers
   }
 }
 
-function validateArtifactCollectionGate(gate, label, artifactsById, expectedRepository, errors) {
+function validateArtifactCollectionGate(gate, label, artifactsById, expectedRepository, errors, options = {}) {
+  if (gate === undefined && options.optional === true) {
+    return;
+  }
   validateGateBase(gate, label, errors);
   if (!isPlainObject(gate)) {
     return;
@@ -671,6 +916,7 @@ function validateArtifactCollectionGate(gate, label, artifactsById, expectedRepo
   }
 
   validateUniqueStrings(gate["artifact-ids"], `${label}.artifact-ids`, errors);
+  validateRequiredGateArtifactsAreReleaseBlocking(gate, label, gate["artifact-ids"], artifactsById, errors);
   for (const artifactId of gate["artifact-ids"]) {
     const artifact = artifactsById.get(artifactId);
     if (!artifact) {
@@ -704,8 +950,11 @@ function validateStudioWebBundleGateMembership(releaseGates, webBundleArtifact, 
   }
 }
 
-function validateChecksumGate(gate, artifactsById, errors) {
-  const label = "release-gates.checksum-verification";
+function validateChecksumGate(gate, artifactsById, errors, options = {}) {
+  const label = options.label ?? "release-gates.checksum-verification";
+  if (gate === undefined && options.optional === true) {
+    return;
+  }
   validateGateBase(gate, label, errors);
   if (!isPlainObject(gate)) {
     return;
@@ -716,6 +965,7 @@ function validateChecksumGate(gate, artifactsById, errors) {
   }
 
   validateUniqueStrings(gate["artifact-ids"], `${label}.artifact-ids`, errors);
+  validateRequiredGateArtifactsAreReleaseBlocking(gate, label, gate["artifact-ids"], artifactsById, errors);
   for (const artifactId of gate["artifact-ids"]) {
     if (!artifactsById.has(artifactId)) {
       errors.push(`${label}.artifact-ids references unknown artifact "${artifactId}".`);
@@ -776,6 +1026,7 @@ function validateRuntimeSmokeGates(runtimeSmoke, runtimeBinaries, artifactsById,
     if (isPlainObject(artifact) && gate["artifact-id"] !== artifact.id) {
       errors.push(`${label}.artifact-id must match components.runtime.binaries.${target}.id.`);
     }
+    validateRequiredGateArtifactsAreReleaseBlocking(gate, label, [gate["artifact-id"]], artifactsById, errors);
   }
 }
 
@@ -814,6 +1065,26 @@ function validateStudioSmokeGates(studioSmoke, desktopPackages, runtimeSidecars,
     const runtimeSidecar = runtimeSidecars?.[target];
     if (isPlainObject(runtimeSidecar) && gate["runtime-sidecar-artifact-id"] !== runtimeSidecar.id) {
       errors.push(`${label}.runtime-sidecar-artifact-id must match components.studio.runtime-sidecars.${target}.id.`);
+    }
+    validateRequiredGateArtifactsAreReleaseBlocking(
+      gate,
+      label,
+      [gate["desktop-package-artifact-id"], gate["runtime-sidecar-artifact-id"]],
+      artifactsById,
+      errors,
+    );
+  }
+}
+
+function validateRequiredGateArtifactsAreReleaseBlocking(gate, label, artifactIds, artifactsById, errors) {
+  if (gate?.required !== true) {
+    return;
+  }
+
+  for (const artifactId of artifactIds) {
+    const artifact = artifactsById.get(artifactId);
+    if (artifact?.["support-tier"] === "preview") {
+      errors.push(`${label} is required but references preview artifact "${artifactId}". Preview artifacts must use non-required gates.`);
     }
   }
 }
@@ -960,6 +1231,16 @@ export function manifestHeader(manifest) {
   };
 }
 
+export function releaseAuthorityState(manifest) {
+  const state = manifest?.["release-authority"]?.state;
+  if (!isPlainObject(state)) {
+    return {};
+  }
+  return Object.fromEntries(
+    EXPECTED_RELEASE_AUTHORITY_STATES.map((stateName) => [stateName, state[stateName] ?? null]),
+  );
+}
+
 export function normalizeComponents(manifest) {
   const value = manifest?.components;
   if (Array.isArray(value)) {
@@ -1058,6 +1339,55 @@ function normalizeComponent(component) {
     name: typeof name === "string" ? name.trim() : name,
     version: component.version ?? component.releaseVersion ?? component.packageVersion,
     repository: component.repository ?? component.repo,
+    expectedSourceCommit: expectedSourceCommitFromComponent(component),
+  };
+}
+
+export function releaseDispatchContext(manifest, options) {
+  const componentName = String(options?.component ?? "").trim();
+  const targetRepo = String(options?.targetRepo ?? "").trim();
+  const expectedSourceCommit = String(options?.expectedSourceCommit ?? "").trim();
+  const requireExpectedSourceCommit = options?.requireExpectedSourceCommit === true;
+  const errors = [];
+  const component = normalizeComponents(manifest).find((candidate) => candidate.name === componentName);
+  const canonicalRepository = CANONICAL_COMPONENT_REPOSITORIES[componentName];
+  const manifestExpectedSourceCommit = component?.expectedSourceCommit ?? "";
+
+  if (!RELEASE_DISPATCH_COMPONENTS.includes(componentName)) {
+    errors.push(`component must be one of ${RELEASE_DISPATCH_COMPONENTS.join(", ")} for Release Please dispatch.`);
+  }
+  if (!component) {
+    errors.push(`Manifest does not include a component row for "${componentName}".`);
+  }
+  if (!canonicalRepository) {
+    errors.push(`No canonical repository mapping exists for component "${componentName}".`);
+  }
+  if (component?.repository && canonicalRepository && component.repository !== canonicalRepository) {
+    errors.push(`Manifest component "${componentName}" maps to ${component.repository}, but canonical mapping requires ${canonicalRepository}.`);
+  }
+  if (targetRepo && canonicalRepository && targetRepo !== canonicalRepository) {
+    errors.push(`Dispatch target ${targetRepo} does not match component "${componentName}" repository ${canonicalRepository}.`);
+  }
+  if (requireExpectedSourceCommit && !isCommitSha(expectedSourceCommit)) {
+    errors.push("expected-source-commit must be a 40-character git commit SHA for publish dispatch.");
+  }
+  if (!isCommitSha(manifestExpectedSourceCommit)) {
+    errors.push(`Manifest component "${componentName}" expected-source-commit must be a 40-character git commit SHA.`);
+  }
+  if (
+    isCommitSha(expectedSourceCommit) &&
+    isCommitSha(manifestExpectedSourceCommit) &&
+    expectedSourceCommit.toLowerCase() !== manifestExpectedSourceCommit.toLowerCase()
+  ) {
+    errors.push(`expected-source-commit ${expectedSourceCommit} does not match manifest component "${componentName}" expected-source-commit ${manifestExpectedSourceCommit}.`);
+  }
+
+  return {
+    errors,
+    component: componentName,
+    repository: component?.repository ?? canonicalRepository ?? "",
+    canonicalRepository: canonicalRepository ?? "",
+    expectedSourceCommit: manifestExpectedSourceCommit,
   };
 }
 
@@ -1260,10 +1590,15 @@ function collectGitHubReleaseGateArtifact(gate, component, artifactsById, trainV
   });
 }
 
-function checksumGateArtifacts(gate) {
-  const artifactIds = new Set(Array.isArray(gate?.["artifact-ids"]) ? gate["artifact-ids"].filter(isNonEmptyString) : []);
+function checksumGateArtifacts(...gates) {
+  const artifactIds = new Set(
+    gates.flatMap((gate) => (Array.isArray(gate?.["artifact-ids"]) ? gate["artifact-ids"].filter(isNonEmptyString) : [])),
+  );
   const expectedChecksums = new Map();
-  if (isPlainObject(gate?.["expected-checksums"])) {
+  for (const gate of gates) {
+    if (!isPlainObject(gate?.["expected-checksums"])) {
+      continue;
+    }
     for (const [artifactId, checksum] of Object.entries(gate["expected-checksums"])) {
       if (isSha256(checksum?.value)) {
         expectedChecksums.set(artifactId, checksum);
@@ -1427,6 +1762,10 @@ function firstArtifactVersion(...artifactMaps) {
   return undefined;
 }
 
+function expectedSourceCommitFromComponent(component) {
+  return firstValue(component["expected-source-commit"], component["source-commit"], component.commit);
+}
+
 function objectValues(value) {
   return isPlainObject(value) ? Object.values(value) : [];
 }
@@ -1482,6 +1821,10 @@ function isRepositoryName(value) {
 
 function isSha256(value) {
   return typeof value === "string" && /^[a-fA-F0-9]{64}$/.test(value);
+}
+
+function isCommitSha(value) {
+  return typeof value === "string" && /^[a-fA-F0-9]{40}$/.test(value);
 }
 
 function arraysEqual(left, right) {

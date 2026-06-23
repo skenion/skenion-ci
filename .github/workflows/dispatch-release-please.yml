@@ -11,6 +11,23 @@ on:
         description: Explicit lockstep release-as version, for example 0.43.0.
         required: true
         type: string
+      component:
+        description: Release train component row to dispatch, such as contracts, runtime, sdk, or studio.
+        required: true
+        type: string
+      manifest:
+        description: Checked-in conductor manifest path or inline JSON that owns this dispatch.
+        required: true
+        type: string
+      manifest-ref:
+        description: Conductor repository ref that contains the manifest.
+        required: false
+        default: ""
+        type: string
+      expected-source-commit:
+        description: Expected target repository source commit for this component row.
+        required: true
+        type: string
       mode:
         description: Release train phase. Only publish can mutate.
         required: false
@@ -71,6 +88,15 @@ jobs:
           path: .skenion-ci
           persist-credentials: false
 
+      - name: Checkout manifest repository
+        if: ${{ !startsWith(inputs.manifest, '{') && !startsWith(inputs.manifest, '[') }}
+        uses: actions/checkout@v4
+        with:
+          repository: skenion/skenion
+          ref: ${{ inputs.manifest-ref || github.sha }}
+          path: .caller
+          persist-credentials: false
+
       - name: Dispatch Release Please workflow
         id: dispatch
         shell: bash
@@ -78,6 +104,11 @@ jobs:
           node .skenion-ci/scripts/dispatch-release-please.mjs
           --target-repo "${TARGET_REPO}"
           --train-version "${TRAIN_VERSION}"
+          --component "${COMPONENT}"
+          --manifest "${MANIFEST}"
+          --manifest-root .caller
+          --manifest-ref "${MANIFEST_REF}"
+          --expected-source-commit "${EXPECTED_SOURCE_COMMIT}"
           --mode "${MODE}"
           --dry-run "${DRY_RUN}"
           --workflow-file "${WORKFLOW_FILE}"
@@ -87,6 +118,10 @@ jobs:
           GH_TOKEN: ${{ secrets.SKENION_RELEASE_TRAIN_TOKEN }}
           TARGET_REPO: ${{ inputs.target-repo }}
           TRAIN_VERSION: ${{ inputs.train-version }}
+          COMPONENT: ${{ inputs.component }}
+          MANIFEST: ${{ inputs.manifest }}
+          MANIFEST_REF: ${{ inputs.manifest-ref }}
+          EXPECTED_SOURCE_COMMIT: ${{ inputs.expected-source-commit }}
           MODE: ${{ inputs.mode }}
           DRY_RUN: ${{ inputs.dry-run }}
           WORKFLOW_FILE: ${{ inputs.workflow-file }}
