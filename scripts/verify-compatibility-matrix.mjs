@@ -859,12 +859,12 @@ function selfCheckMatrix(runtimeSha) {
         binaries: {
           "aarch64-apple-darwin": {
             id: "runtime-aarch64-apple-darwin",
-            name: "skenion-runtime-aarch64-apple-darwin.tar.gz",
+            name: "skenion-runtime-v0.45.0-aarch64-apple-darwin.tar.gz",
             source: {
               kind: "github-release-asset",
               repository: "skenion/skenion-runtime",
-              tag: "skenion-runtime-v0.45.0",
-              "asset-name": "skenion-runtime-aarch64-apple-darwin.tar.gz",
+              tag: "v0.45.0",
+              "asset-name": "skenion-runtime-v0.45.0-aarch64-apple-darwin.tar.gz",
             },
             checksum: {
               algorithm: "sha256",
@@ -909,13 +909,13 @@ function selfCheckFetch(runtimeBytes) {
     if (textUrl.includes("crates.io/api/v1/crates/skenion-contracts/0.45.0")) {
       return jsonResponse({ version: { num: "0.45.0" } });
     }
-    if (textUrl.includes("api.github.com/repos/skenion/skenion-runtime/releases/tags/skenion-runtime-v0.45.0")) {
+    if (textUrl.includes("api.github.com/repos/skenion/skenion-runtime/releases/tags/v0.45.0")) {
       return jsonResponse({
         draft: false,
         prerelease: false,
         assets: [
           {
-            name: "skenion-runtime-aarch64-apple-darwin.tar.gz",
+            name: "skenion-runtime-v0.45.0-aarch64-apple-darwin.tar.gz",
             url: "https://api.github.com/assets/runtime-aarch64-apple-darwin",
           },
         ],
